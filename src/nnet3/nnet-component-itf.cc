@@ -115,6 +115,8 @@ Component* Component::NewComponentOfType(const std::string &component_type) {
     ans = new FixedBiasComponent();
   } else if (component_type == "NoOpComponent") {
     ans = new NoOpComponent();
+  } else if (component_type == "GradientReversalComponent") {
+    ans = new GradientReversalComponent();
   } else if (component_type == "ClipGradientComponent") {
     ans = new ClipGradientComponent();
   } else if (component_type == "ElementwiseProductComponent") {
