@@ -102,7 +102,7 @@ static void ProcessFile(const MatrixBase<BaseFloat> &feats,
     eg.io.push_back(NnetIo("output", num_pdfs, 0, labels));
 
     // add auxiliary labels.
-    eg.io.push_back(NnetIo("output_aux", num_aux , 0, labels_aux));
+    eg.io.push_back(NnetIo("output_aux", num_aux, 0, labels_aux));
     
     if (compress)
       eg.Compress();
