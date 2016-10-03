@@ -936,13 +936,17 @@ class NoOpComponent: public NonlinearComponent {
 // Shinohara's Adversarial Multi-Task Learning Interspeech 2016 paper.
 class GradientReversalComponent: public NonlinearComponent {
  public:
+  void Init(int32 input_dim);
   explicit GradientReversalComponent(const GradientReversalComponent &other): NonlinearComponent(other) { }
-  GradientReversalComponent() { }
+  GradientReversalComponent(): input_dim_(0) { }
   virtual std::string Type() const { return "GradientReversalComponent"; }
   virtual int32 Properties() const {
     return kSimpleComponent|kLinearInInput|kPropagateInPlace;
   }
   virtual Component* Copy() const { return new GradientReversalComponent(*this); }
+  virtual void InitFromConfig(ConfigLine *cfl);
+  virtual int32 InputDim() const { return input_dim_; }
+  virtual int32 OutputDim() const { return input_dim_; }
   virtual void Propagate(const ComponentPrecomputedIndexes *indexes,
                          const CuMatrixBase<BaseFloat> &in,
                          CuMatrixBase<BaseFloat> *out) const;
@@ -953,8 +957,12 @@ class GradientReversalComponent: public NonlinearComponent {
                         const CuMatrixBase<BaseFloat> &out_deriv,
                         Component *to_update,
                         CuMatrixBase<BaseFloat> *in_deriv) const;
+  virtual void Read(std::istream &is, bool binary);
+  virtual void Write(std::ostream &os, bool binary) const;
  private:
   GradientReversalComponent &operator = (const GradientReversalComponent &other); // Disallow.
+ protected:
+  int32 input_dim_;
 };
 
 // ClipGradientComponent just duplicates its input, but clips gradients

@@ -547,6 +547,21 @@ void NoOpComponent::Backprop(const std::string &debug_info,
   in_deriv->CopyFromMat(out_deriv);
 }
 
+void GradientReversalComponent::Init(int32 input_dim)  {
+  KALDI_ASSERT(input_dim > 0);
+  input_dim_ = input_dim;
+}
+
+void GradientReversalComponent::InitFromConfig(ConfigLine *cfl) {
+  int32 input_dim = 0;
+  bool ok = cfl->GetValue("dim", &input_dim) ||
+      cfl->GetValue("input-dim", &input_dim);
+  if (!ok || cfl->HasUnusedValues() || input_dim <= 0)
+    KALDI_ERR << "Invalid initializer for layer of type "
+              << Type() << ": \"" << cfl->WholeLine() << "\"";
+  Init(input_dim);
+}
+
 void GradientReversalComponent::Propagate(const ComponentPrecomputedIndexes *indexes,
                                  const CuMatrixBase<BaseFloat> &in,
                                  CuMatrixBase<BaseFloat> *out) const {
@@ -563,6 +578,18 @@ void GradientReversalComponent::Backprop(const std::string &debug_info,
                              CuMatrixBase<BaseFloat> *in_deriv) const {
   in_deriv->CopyFromMat(out_deriv);
   in_deriv->Scale(-1.0);
+}
+
+void GradientReversalComponent::Read(std::istream &is, bool binary) {
+  ExpectOneOrTwoTokens(is, binary, "<GradientReversalComponent>", "<InputDim>");
+  ReadBasicType(is, binary, &input_dim_);
+  ExpectToken(is, binary, "</GradientReversalComponent>");
+}
+void GradientReversalComponent::Write(std::ostream &os, bool binary) const {
+  WriteToken(os, binary, "<GradientReversalComponent>");
+  WriteToken(os, binary, "<InputDim>");
+  WriteBasicType(os, binary, input_dim_);
+  WriteToken(os, binary, "</GradientReversalComponent>");
 }
 
 void ClipGradientComponent::Read(std::istream &is, bool binary) {
