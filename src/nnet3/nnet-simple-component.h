@@ -929,21 +929,21 @@ class NoOpComponent: public NonlinearComponent {
   NoOpComponent &operator = (const NoOpComponent &other); // Disallow.
 };
 
-// GradientReversalComponent is based upon NoOpComponent.
+// GradientScaleComponent is based upon NoOpComponent.
 // In the forward pass it just duplicates the input,
-// but in the backward pass it negates the gradient.
+// but in the backward pass it multiplies the gradient by a scalar.
 // This is similar to the Gradient Reversal Layer (GRL) in
 // Shinohara's Adversarial Multi-Task Learning Interspeech 2016 paper.
-class GradientReversalComponent: public NonlinearComponent {
+class GradientScaleComponent: public NonlinearComponent {
  public:
-  void Init(int32 input_dim);
-  explicit GradientReversalComponent(int32 input_dim) { Init(input_dim); }
-  GradientReversalComponent(): input_dim_(0) { }
-  virtual std::string Type() const { return "GradientReversalComponent"; }
+  void Init(int32 input_dim, BaseFloat scale);
+  explicit GradientScaleComponent(int32 input_dim, BaseFloat scale) { Init(input_dim, scale); }
+  GradientScaleComponent(): input_dim_(0), scale_(0.0) { }
+  virtual std::string Type() const { return "GradientScaleComponent"; }
   virtual int32 Properties() const {
     return kSimpleComponent|kLinearInInput|kPropagateInPlace;
   }
-  virtual Component* Copy() const { return new GradientReversalComponent(*this); }
+  virtual Component* Copy() const { return new GradientScaleComponent(*this); }
   virtual void InitFromConfig(ConfigLine *cfl);
   virtual int32 InputDim() const { return input_dim_; }
   virtual int32 OutputDim() const { return input_dim_; }
@@ -960,9 +960,10 @@ class GradientReversalComponent: public NonlinearComponent {
   virtual void Read(std::istream &is, bool binary);
   virtual void Write(std::ostream &os, bool binary) const;
  private:
-  GradientReversalComponent &operator = (const GradientReversalComponent &other); // Disallow.
+  GradientScaleComponent &operator = (const GradientScaleComponent &other); // Disallow.
  protected:
   int32 input_dim_;
+  BaseFloat scale_;
 };
 
 // ClipGradientComponent just duplicates its input, but clips gradients
