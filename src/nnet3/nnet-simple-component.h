@@ -937,7 +937,7 @@ class NoOpComponent: public NonlinearComponent {
 class GradientReversalComponent: public NonlinearComponent {
  public:
   void Init(int32 input_dim);
-  explicit GradientReversalComponent(const GradientReversalComponent &other): NonlinearComponent(other) { }
+  explicit GradientReversalComponent(int32 input_dim) { Init(input_dim); }
   GradientReversalComponent(): input_dim_(0) { }
   virtual std::string Type() const { return "GradientReversalComponent"; }
   virtual int32 Properties() const {
