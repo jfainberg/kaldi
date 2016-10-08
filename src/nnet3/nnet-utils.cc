@@ -280,6 +280,18 @@ void SetLearningRate(BaseFloat learning_rate,
   }
 }
 
+void SetGSLScale(BaseFloat scale,
+                 Nnet *nnet) {
+  for (int32 c = 0; c < nnet->NumComponents(); c++) {
+    Component *comp = nnet->GetComponent(c);
+    if (comp->Type() == "GradientScaleComponent") {
+      GradientScaleComponent *gsl = dynamic_cast<GradientScaleComponent*>(comp);
+      KALDI_LOG << "Updating scale to " << scale;
+      gsl->SetGSLScale(scale);
+    }
+  }
+}
+
 void SetLearningRates(const Vector<BaseFloat> &learning_rates,
                      Nnet *nnet) {
   int32 i = 0;

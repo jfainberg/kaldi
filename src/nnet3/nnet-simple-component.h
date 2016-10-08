@@ -945,6 +945,7 @@ class GradientScaleComponent: public NonlinearComponent {
   }
   virtual Component* Copy() const { return new GradientScaleComponent(*this); }
   virtual void InitFromConfig(ConfigLine *cfl);
+  void SetGSLScale(BaseFloat scale);
   virtual int32 InputDim() const { return input_dim_; }
   virtual int32 OutputDim() const { return input_dim_; }
   virtual void Propagate(const ComponentPrecomputedIndexes *indexes,

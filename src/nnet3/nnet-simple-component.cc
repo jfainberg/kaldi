@@ -565,6 +565,10 @@ void GradientScaleComponent::InitFromConfig(ConfigLine *cfl) {
   Init(input_dim, scale);
 }
 
+void GradientScaleComponent::SetGSLScale(BaseFloat scale) {
+  scale_ = scale;
+}
+
 void GradientScaleComponent::Propagate(const ComponentPrecomputedIndexes *indexes,
                                  const CuMatrixBase<BaseFloat> &in,
                                  CuMatrixBase<BaseFloat> *out) const {

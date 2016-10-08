@@ -37,7 +37,8 @@ int main(int argc, char *argv[]) {
         "Also supports setting all learning rates to a supplied\n"
         "value (the --learning-rate option),\n"
         "and supports replacing the raw nnet in the model (the Nnet)\n"
-        "with a provided raw nnet (the --set-raw-nnet option)\n"
+        "with a provided raw nnet (the --set-raw-nnet option).\n"
+        "Also supports changing gradient scaling parameter if present\n"
         "\n"
         "Usage:  nnet3-am-copy [options] <nnet-in> <nnet-out>\n"
         "e.g.:\n"
@@ -48,6 +49,7 @@ int main(int argc, char *argv[]) {
         raw = false;
     BaseFloat learning_rate = -1;
     BaseFloat learning_rate_scale = 1;
+    BaseFloat gsl_scale = std::numeric_limits<double>::quiet_NaN();
     std::string set_raw_nnet = "";
     bool convert_repeated_to_block = false;
     BaseFloat scale = 1.0;
@@ -72,6 +74,8 @@ int main(int argc, char *argv[]) {
                 "factor");
     po.Register("scale", &scale, "The parameter matrices are scaled"
                 " by the specified value.");
+    po.Register("gsl-scale", &gsl_scale, "The Gradient Scaling layers"
+                " use this learning rate.");
 
 
     po.Read(argc, argv);
@@ -104,6 +108,9 @@ int main(int argc, char *argv[]) {
 
     if (learning_rate >= 0)
       SetLearningRate(learning_rate, &(am_nnet.GetNnet()));
+  
+    if ( ! std::isnan(gsl_scale))
+      SetGSLScale(gsl_scale, &(am_nnet.GetNnet()));
 
     KALDI_ASSERT(learning_rate_scale >= 0.0);
 

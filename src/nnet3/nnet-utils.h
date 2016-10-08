@@ -116,6 +116,10 @@ void ComputeSimpleNnetContext(const Nnet &nnet,
 void SetLearningRate(BaseFloat learning_rate,
                      Nnet *nnet);
 
+/// Sets the GradientScaleLayer scaling parameter
+void SetGSLScale(BaseFloat scale,
+                 Nnet *nnet);
+
 /// Scales the actual learning rate for all the components in the nnet
 /// by this factor
 void ScaleLearningRate(BaseFloat learning_rate_scale,
