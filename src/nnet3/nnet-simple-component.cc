@@ -556,9 +556,9 @@ void GradientScaleComponent::Init(int32 input_dim, BaseFloat scale)  {
 void GradientScaleComponent::InitFromConfig(ConfigLine *cfl) {
   int32 input_dim = 0;
   BaseFloat scale = 0.0;
+  cfl->GetValue("scale", &scale); // optional
   bool ok = (cfl->GetValue("dim", &input_dim) ||
-      cfl->GetValue("input-dim", &input_dim)) &&
-      cfl->GetValue("scale", &scale);
+      cfl->GetValue("input-dim", &input_dim));
   if (!ok || cfl->HasUnusedValues() || input_dim <= 0)
     KALDI_ERR << "Invalid initializer for layer of type "
               << Type() << ": \"" << cfl->WholeLine() << "\"";
