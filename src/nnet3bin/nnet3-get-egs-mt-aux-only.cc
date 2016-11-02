@@ -151,8 +151,6 @@ int main(int argc, char *argv[]) {
     ParseOptions po(usage);
     po.Register("compress", &compress, "If true, write egs in "
                 "compressed format.");
-    po.Register("num-pdfs", &num_pdfs, "Number of pdfs in the acoustic "
-                "model");
     po.Register("num-aux", &num_aux, "Number of aux features in the acoustic "
                 "model");
     po.Register("left-context", &left_context, "Number of frames of left "
@@ -173,8 +171,6 @@ int main(int argc, char *argv[]) {
       exit(1);
     }
 
-    if (num_pdfs <= 0)
-      KALDI_ERR << "--num-pdfs options is required.";
     if (num_aux <= 0)
       KALDI_ERR << "--num-aux options is required.";
     
