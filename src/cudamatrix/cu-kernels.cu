@@ -424,31 +424,6 @@ static void _mul_rows_group_mat(Real *y, const Real *x, MatrixDim d,
   }
 }
 
-/// y is the derivative we will output; vec is the input we're computing
-/// the group p-norm on, "norm" is the previously computed group p-norm.
-template<typename Real>
-__global__
-static void _calc_pnorm_deriv(Real *deriv, const Real *vec, const Real *norm,
-                              MatrixDim deriv_dim, int vec_stride,
-                              int norm_stride, int group_size, Real power) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  int j = blockIdx.y * blockDim.y + threadIdx.y;
-  if (j < deriv_dim.rows && i < deriv_dim.cols) {
-    int deriv_index = i + j * deriv_dim.stride;
-    int vec_index = i + j * vec_stride;
-    int norm_index = i / group_size + j * norm_stride;
-    Real vec_element = vec[vec_index], // The element of the original vector.
-        norm_element = norm[norm_index]; // this is the pnorm
-    Real vec_element_sign = (vec_element > 0 ? 1 : -1);
-    Real ans;
-    if (norm_element <= 0.0)
-      ans = 0.0; // The derivative is either zero or undefined at the origin.
-    else
-      ans = vec_element_sign * pow(std::abs(vec_element), power - 1)
-          * pow(norm_element, 1 - power);
-    deriv[deriv_index] = ans;
-  }
-}
 
 template<typename Real>
 __global__
@@ -609,7 +584,7 @@ static void _add_mat_blocks_trans(Real alpha, const Real* src,
 
 template<typename Real>
 __global__
-static void _add_mat_mat_div_mat(const Real* A, const Real* B, const Real* C,
+static void _set_mat_mat_div_mat(const Real* A, const Real* B, const Real* C,
                                  Real* dst, MatrixDim d, int stride_a,
                                  int stride_b, int stride_c) {
   int32_cuda i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -946,7 +921,7 @@ static void _add_diag_mat_mat_MTN(const Real alpha, const Real* M,
   const int tid = threadIdx.y * blockDim.x + threadIdx.x;
   const int j = blockIdx.x * blockDim.x + threadIdx.x;
 
-  if (j > dim_N.cols)
+  if (j >= dim_N.cols)
     return;
 
   // Loop along the matrix column.
@@ -1056,7 +1031,7 @@ static void _add_diag_mat_mat_MN(const Real alpha, const Real* M,
   }
 
   // output TileDim sums per thread block
-  if (tid < TileDim) {
+  if (tid < TileDim && j_n < dim_N.cols) {
     v[j_n] = alpha * smem.sum[tid] + beta * v[j_n];
   }
 }
@@ -2845,12 +2820,6 @@ void cudaF_mul_rows_group_mat(dim3 Gr, dim3 Bl, float *y, const float *x,
   _mul_rows_group_mat<<<Gr,Bl>>>(y, x, d, src_stride, group_size);
 }
 
-void cudaF_calc_pnorm_deriv(dim3 Gr, dim3 Bl, float *y, const float *x1,
-                            const float *x2, MatrixDim y_dim, int x1_stride,
-                            int x2_stride, int group_size, float power) {
-  _calc_pnorm_deriv<<<Gr,Bl>>>(y, x1, x2, y_dim, x1_stride, x2_stride,
-      group_size, power);
-}
 
 void cudaF_diff_group_pnorm(dim3 Gr, dim3 Bl, float *id, const float *iv,
                             const float *ov, const float* od, MatrixDim id_dim,
@@ -2894,10 +2863,10 @@ void cudaF_add_mat_blocks(dim3 Gr, dim3 Bl, float alpha, const float* src,
   }
 }
 
-void cudaF_add_mat_mat_div_mat(dim3 Gr, dim3 Bl, const float *A, const float *B,
+void cudaF_set_mat_mat_div_mat(dim3 Gr, dim3 Bl, const float *A, const float *B,
                                const float *C, float *dst, MatrixDim d,
                                int stride_a, int stride_b, int stride_c) {
-  _add_mat_mat_div_mat<<<Gr,Bl>>>(A,B,C,dst,d, stride_a, stride_b, stride_c);
+  _set_mat_mat_div_mat<<<Gr,Bl>>>(A,B,C,dst,d, stride_a, stride_b, stride_c);
 }
 
 void cudaF_sy_add_tr2(dim3 Gr, dim3 Bl, float alpha, float beta, const float* T,
@@ -3494,13 +3463,6 @@ void cudaD_mul_rows_group_mat(dim3 Gr, dim3 Bl, double* y, const double* x,
   _mul_rows_group_mat<<<Gr,Bl>>>(y, x, d, src_stride, group_size);
 }
 
-void cudaD_calc_pnorm_deriv(dim3 Gr, dim3 Bl, double*y, const double* x1,
-                            const double* x2, MatrixDim y_dim, int x1_stride,
-                            int x2_stride, int group_size, double power) {
-  _calc_pnorm_deriv<<<Gr,Bl>>>(y, x1, x2, y_dim, x1_stride, x2_stride,
-      group_size, power);
-}
-
 void cudaD_diff_group_pnorm(dim3 Gr, dim3 Bl, double *id, const double *iv,
                             const double *ov, const double* od,
                             MatrixDim id_dim, int iv_stride, int ov_stride,
@@ -3543,11 +3505,11 @@ void cudaD_add_mat_blocks(dim3 Gr, dim3 Bl, double alpha, const double* src,
   }
 }
 
-void cudaD_add_mat_mat_div_mat(dim3 Gr, dim3 Bl, const double *A,
+void cudaD_set_mat_mat_div_mat(dim3 Gr, dim3 Bl, const double *A,
                                const double *B, const double *C, double *dst,
                                MatrixDim d, int stride_a, int stride_b,
                                int stride_c) {
-  _add_mat_mat_div_mat<<<Gr,Bl>>>(A,B,C,dst,d,stride_a,stride_b,stride_c);
+  _set_mat_mat_div_mat<<<Gr,Bl>>>(A,B,C,dst,d,stride_a,stride_b,stride_c);
 }
 
 void cudaD_sy_add_tr2(dim3 Gr, dim3 Bl, double alpha, double beta,
@@ -4069,4 +4031,3 @@ void cudaD_trace_mat_smat_trans(dim3 Gr, dim3 Bl, const double* mat_in,
   _trace_mat_smat_trans<<<Gr,Bl>>>(mat_in, smat_in, mat_d_in, smat_d_in,
       trace_vec_out);
 }
-
