@@ -1,4 +1,4 @@
-// featbin/feat-to-len.cc
+// featbin/feat-to-ali.cc
 
 // Copyright 2009-2011  Microsoft Corporation
 
