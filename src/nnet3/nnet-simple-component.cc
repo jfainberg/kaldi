@@ -290,11 +290,11 @@ void NormalizeComponent::Read(std::istream &is, bool binary) {
     ReadBasicType(is, binary, &add_log_stddev_);
     ReadToken(is, binary, &token);
   }
-  if (token == "<ValueAvg>") {
+  if (token == "<ValueSum>") {
     // back-compatibility code.
     CuVector<double> temp;
     temp.Read(is, binary);
-    ExpectToken(is, binary, "<DerivAvg>");
+    ExpectToken(is, binary, "<DerivSum>");
     temp.Read(is, binary);
     ExpectToken(is, binary, "<Count>");
     double count;
@@ -2780,6 +2780,11 @@ void FixedAffineComponent::InitFromConfig(ConfigLine *cfl) {
     mat.Read(ki.Stream(), binary);
     KALDI_ASSERT(mat.NumRows() != 0);
     Init(mat);
+    std::cout << "Input-dim: "<< InputDim() << std::endl;
+    std::cout << mat(0,0) << std::endl;
+    std::cout << mat(0, InputDim()) << std::endl;
+    std::cout << "NumRows: "<<mat.NumRows() << std::endl;
+    std::cout << "NumCols: "<<mat.NumCols() << std::endl;
   } else {
     int32 input_dim = -1, output_dim = -1;
     if (!cfl->GetValue("input-dim", &input_dim) ||
