@@ -52,8 +52,8 @@ int main(int argc, char *argv[]) {
       SequentialBaseFloatMatrixReader matrix_reader(rspecifier);
       for (; !matrix_reader.Done(); matrix_reader.Next())
         // Calls to Key and Value needs to happen at same time (Sequential reader)
-        // For some reason, Kaldi's alignments are len(feats) + 1
-        ali_writer.Write(matrix_reader.Key(), std::vector<int32>(matrix_reader.Value().NumRows()+1, value));
+        // Kaldi's alignments are len(feats) 
+        ali_writer.Write(matrix_reader.Key(), std::vector<int32>(matrix_reader.Value().NumRows(), value));
     }
     return 0;
   } catch(const std::exception &e) {
