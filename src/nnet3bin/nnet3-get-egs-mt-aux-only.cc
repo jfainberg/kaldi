@@ -38,7 +38,8 @@ static void ProcessFile(const MatrixBase<BaseFloat> &feats,
                         const std::string &utt_id,
                         bool compress,
                         int32 num_pdfs,
-			int32 num_aux,
+			            int32 num_aux,
+                        int32 num_copies,
                         int32 left_context,
                         int32 right_context,
                         int32 frames_per_eg,
@@ -110,7 +111,8 @@ static void ProcessFile(const MatrixBase<BaseFloat> &feats,
     *num_frames_written += actual_frames_per_eg;
     *num_egs_written += 1;
 
-    example_writer->Write(key, eg);
+    for (int c = 0; c < num_copies; ++c)
+      example_writer->Write(key, eg);
   }
 }
 
@@ -143,8 +145,9 @@ int main(int argc, char *argv[]) {
         
 
     bool compress = true;
-    int32 num_pdfs = -1, num_aux = -1, left_context = 0, right_context = 0,
-        num_frames = 1, length_tolerance = 100;
+    int32 num_pdfs = -1, num_aux = -1, num_copies = 1, 
+        left_context = 0, right_context = 0, num_frames = 1, 
+        length_tolerance = 100;
         
     std::string ivector_rspecifier;
     
@@ -153,6 +156,7 @@ int main(int argc, char *argv[]) {
                 "compressed format.");
     po.Register("num-aux", &num_aux, "Number of aux features in the acoustic "
                 "model");
+    po.Register("num-copies", &num_copies, "Number of identical copies to make.");
     po.Register("left-context", &left_context, "Number of frames of left "
                 "context the neural net requires.");
     po.Register("right-context", &right_context, "Number of frames of right "
@@ -173,6 +177,8 @@ int main(int argc, char *argv[]) {
 
     if (num_aux <= 0)
       KALDI_ERR << "--num-aux options is required.";
+
+    KALDI_ASSERT(num_copies > 0);
     
 
     std::string feature_rspecifier = po.GetArg(1),
@@ -228,8 +234,8 @@ int main(int argc, char *argv[]) {
         }
           
         ProcessFile(feats, ivector_feats, aux_post, key, compress,
-                    num_pdfs, num_aux, left_context, right_context, num_frames,
-                    &num_frames_written, &num_egs_written,
+                    num_pdfs, num_aux, num_copies, left_context, right_context, 
+                    num_frames, &num_frames_written, &num_egs_written,
                     &example_writer);
         num_done++;
       }

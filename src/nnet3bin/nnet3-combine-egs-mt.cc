@@ -342,6 +342,7 @@ int main(int argc, char *argv[]) {
       }
     }
 
+    num_written = 0;
     for (; !example_reader_test.Done(); example_reader_test.Next(), num_read++) {
       // count is normally 1; could be 0, or possibly >1.
       int32 count = GetCount(keep_proportion);  
