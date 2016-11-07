@@ -280,6 +280,9 @@ int main(int argc, char *argv[]) {
     // offset, or to 'random' to select a random single frame.
     std::string frame_str;
 
+    // Sometimes we might want to generate more data
+    int32 num_copies = 1;
+
     ParseOptions po(usage);
     po.Register("random", &random, "If true, will write frames to output "
                 "archives randomly, not round-robin.");
@@ -301,6 +304,7 @@ int main(int argc, char *argv[]) {
                 "feature left-context that we output.");
     po.Register("right-context", &right_context, "Can be used to truncate the "
                 "feature right-context that we output.");
+    po.Register("num-copies", &num_copies, "Can be used to create duplicates.");
 
 
     po.Read(argc, argv);
@@ -332,7 +336,8 @@ int main(int argc, char *argv[]) {
         int32 index = (random ? Rand() : num_written) % num_outputs;
         if (frame_str == "" && left_context == -1 && right_context == -1 &&
             frame_shift == 0) {
-          example_writers[index]->Write(key, eg);
+          for (int32 i = 0; i < num_copies; i++)
+              example_writers[index]->Write(key, eg);
           num_written++;
         } else { // the --frame option or context options were set.
           NnetExample eg_modified;
@@ -340,7 +345,8 @@ int main(int argc, char *argv[]) {
                                 frame_shift, &eg_modified)) {
             // this branch of the if statement will almost always be taken (should only
             // not be taken for shorter-than-normal egs from the end of a file.
-            example_writers[index]->Write(key, eg_modified);
+            for (int32 i = 0; i < num_copies; i++)
+                example_writers[index]->Write(key, eg_modified);
             num_written++;
           }
         }
