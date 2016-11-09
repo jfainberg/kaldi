@@ -3186,6 +3186,28 @@ void LogSoftmaxComponent::Backprop(const std::string &debug_info,
 }
 
 
+void LogSoftmaxPenalisedComponent::Propagate(const ComponentPrecomputedIndexes *indexes,
+                                    const CuMatrixBase<BaseFloat> &in,
+                                    CuMatrixBase<BaseFloat> *out) const {
+  // Applies log softmax function to each row of the output. For each row, we do
+  // x_i = x_i - log(sum_j exp(x_j))
+  out->ApplyLogSoftMaxPerRow(in);
+}
+
+void LogSoftmaxPenalisedComponent::Backprop(const std::string &debug_info,
+                                   const ComponentPrecomputedIndexes *indexes,
+                                   const CuMatrixBase<BaseFloat> &, // in_value
+                                   const CuMatrixBase<BaseFloat> &out_value,
+                                   const CuMatrixBase<BaseFloat> &out_deriv,
+                                   Component *, // to_update
+                                   CuMatrixBase<BaseFloat> *in_deriv) const {
+  if (in_deriv == NULL)
+    return;
+  // TODO: update this to reflect penalised objective
+  in_deriv->DiffLogSoftmaxPerRow(out_value, out_deriv);
+}
+
+
 void FixedScaleComponent::Init(const CuVectorBase<BaseFloat> &scales) {
   KALDI_ASSERT(scales.Dim() != 0);
   scales_ = scales;

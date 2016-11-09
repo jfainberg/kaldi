@@ -519,6 +519,7 @@ class NonlinearComponent: public Component {
   friend class TanhComponent;
   friend class SoftmaxComponent;
   friend class LogSoftmaxComponent;
+  friend class LogSoftmaxPenalisedComponent;
   friend class RectifiedLinearComponent;
 
   // This function updates the stats "value_sum_", "deriv_sum_", and

@@ -695,6 +695,31 @@ class LogSoftmaxComponent: public NonlinearComponent {
   LogSoftmaxComponent &operator = (const LogSoftmaxComponent &other); // Disallow.
 };
 
+class LogSoftmaxPenalisedComponent: public NonlinearComponent {
+ public:
+  explicit LogSoftmaxPenalisedComponent(const LogSoftmaxPenalisedComponent &other):
+      NonlinearComponent(other) { }
+  LogSoftmaxPenalisedComponent() { }
+  virtual std::string Type() const { return "LogSoftmaxPenalisedComponent"; }
+  virtual int32 Properties() const {
+    return kSimpleComponent|kBackpropNeedsOutput|kStoresStats;
+  }
+  virtual void Propagate(const ComponentPrecomputedIndexes *indexes,
+                         const CuMatrixBase<BaseFloat> &in,
+                         CuMatrixBase<BaseFloat> *out) const;
+  virtual void Backprop(const std::string &debug_info,
+                        const ComponentPrecomputedIndexes *indexes,
+                        const CuMatrixBase<BaseFloat> &in_value,
+                        const CuMatrixBase<BaseFloat> &out_value,
+                        const CuMatrixBase<BaseFloat> &out_deriv,
+                        Component *to_update,
+                        CuMatrixBase<BaseFloat> *in_deriv) const;
+
+  virtual Component* Copy() const { return new LogSoftmaxPenalisedComponent(*this); }
+ private:
+  LogSoftmaxPenalisedComponent &operator = (const LogSoftmaxPenalisedComponent &other); // Disallow.
+};
+
 /// Keywords: natural gradient descent, NG-SGD, naturalgradient.  For
 /// the top-level of the natural gradient code look here, and also in
 /// nnet-precondition-online.h.
