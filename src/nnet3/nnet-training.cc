@@ -352,6 +352,80 @@ void ComputeObjectiveFunction(const GeneralMatrix &supervision,
       }
       break;
     }
+    case kPenalised: {
+      // objective is x * y.
+      // penalising low entropy with scalar beta
+      // from ICLR 2017 Pereyra et al. paper "Regularizing Neural Networks ..."
+      // New loss ((pos) log likelihood): L = xent + beta H(p(y|x))
+      // dot(output, cu_post) + beta*[ - exp(dot(output, cu_post)) * dot(output, cu_post) ]
+      // before we had: sum_n sum(log p(y|x)) = tr(output, cu_post)
+      // and we have: sum_n sum(p(y|x)) = tr(exp(output), cu_post)
+      // we want: objf + beta * sum_n sum(p(y|x) * log p(y|x))
+      // I think this is objf + beta* [tr( output*cu_post \odot exp(output)*cu_post) ]
+      // where \odot is the elementwise/Hadamard product, MulElements in Kaldi
+      switch (supervision.Type()) {
+        case kSparseMatrix: {
+          const SparseMatrix<BaseFloat> &post = supervision.GetSparseMatrix();
+          CuSparseMatrix<BaseFloat> cu_post(post);
+          // The cross-entropy objective is computed by a simple dot product,
+          // because after the LogSoftmaxLayer, the output is already in the form
+          // of log-likelihoods that are normalized to sum to one.
+          *tot_weight = cu_post.Sum();
+          //*tot_objf = TraceMatSmat(output, cu_post, kTrans);
+
+          // standard log likelihood
+          BaseFloat objf = TraceMatSmat(output, cu_post, kTrans);
+          
+          // hyperparameter TODO: make it possible to set it
+          BaseFloat beta = 0.1;
+
+          Matrix<BaseFloat> exp_output(output);
+          exp_output.ApplyExp();
+          CuMatrix<BaseFloat> cu_post2(exp_output.NumRows(), exp_output.NumCols(), kSetZero, kDefaultStride);
+          cu_post2.Set(0.0);
+          Matrix<BaseFloat> cu_post_normal;
+          cu_post.CopyToMat(&cu_post2, kNoTrans);
+          cu_post_normal.Swap(&cu_post2);
+          exp_output.MulElements(cu_post_normal);
+
+          Matrix<BaseFloat> output_normal(output);
+          
+          // TODO: This is now all CPU computation...
+          *tot_objf = objf + beta*( TraceMatMatMat(output_normal, kNoTrans, cu_post_normal, kTrans, exp_output, kTrans ));
+
+            
+          if (supply_deriv) {
+            CuMatrix<BaseFloat> output_deriv(output.NumRows(), output.NumCols(),
+                                             kUndefined);
+            cu_post.CopyToMat(&output_deriv);
+            computer->AcceptOutputDeriv(output_name, &output_deriv);
+          }
+          break;
+        }
+        case kFullMatrix: {
+          // there is a redundant matrix copy in here if we're not using a GPU
+          // but we don't anticipate this code branch being used in many cases.
+          CuMatrix<BaseFloat> cu_post(supervision.GetFullMatrix());
+          *tot_weight = cu_post.Sum();
+          *tot_objf = TraceMatMat(output, cu_post, kTrans);
+          if (supply_deriv)
+            computer->AcceptOutputDeriv(output_name, &cu_post);
+          break;
+        }
+        case kCompressedMatrix: {
+          Matrix<BaseFloat> post;
+          supervision.GetMatrix(&post);
+          CuMatrix<BaseFloat> cu_post;
+          cu_post.Swap(&post);
+          *tot_weight = cu_post.Sum();
+          *tot_objf = TraceMatMat(output, cu_post, kTrans);
+          if (supply_deriv)
+            computer->AcceptOutputDeriv(output_name, &cu_post);
+          break;
+        }
+      }
+      break;
+    }
     case kQuadratic: {
       // objective is -0.5 (x - y)^2
       CuMatrix<BaseFloat> diff(supervision.NumRows(),
