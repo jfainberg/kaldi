@@ -30,7 +30,7 @@ namespace nnet3 {
 // or crashes if it is not there.
 int32 NumOutputIndexes(const NnetExample &eg) {
   for (size_t i = 0; i < eg.io.size(); i++)
-    if (eg.io[i].name == "output")
+    if (eg.io[i].name == "output" || eg.io[i].name == "output_aux" )
       return eg.io[i].indexes.size();
   KALDI_ERR << "No output named 'output' in the eg.";
   return 0;  // Suppress compiler warning.
