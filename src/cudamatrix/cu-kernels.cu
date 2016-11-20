@@ -2629,6 +2629,84 @@ static void _diff_log_softmax(const MatrixDim in_deriv_dim,
   }
 }
 
+// This is a modified version of _diff_log_softmax(.),
+// to also include a reward for high entropy distributions.
+// Note: this version only supports one-hot outputs,
+// we don't use sum_e.
+// WIP!
+// Differentiate backward through the log softmax function.
+// "out_value" is the log softmax output. Does, for each row i,
+// in_deriv(i) =  out_deriv(i) - sum(out_deriv(i)) .* exp(out_value(i))
+// ???(i) is row-vector.
+// CUDA thread layout: 1 thread block (CU1DBLOCK == 256 threads) per matrix-row.
+template<typename Real>
+__global__
+static void _diff_log_penalised_softmax(const MatrixDim in_deriv_dim,
+                                        const Real* out_value, const int out_value_stride,
+                                        const Real* out_deriv, const int out_deriv_stride,
+                                        Real* in_deriv) {
+
+  __shared__ Real ssum[CU1DBLOCK];
+  const int tid = threadIdx.x;
+  const int i = blockIdx.x;
+  const int out_value_start = i * out_value_stride;
+  const int out_deriv_start = i * out_deriv_stride;
+  const int in_deriv_start = i * in_deriv_dim.stride;
+
+  // Loop along the matrix row. Reduce to CU1DBLOCK elements per row.
+  Real tsum = Real(0);
+  for (int j = tid; j < in_deriv_dim.cols; j += CU1DBLOCK) {
+    tsum += out_value[out_value_start + j] * exp(out_value[out_value_start + j]);
+  }
+  ssum[tid] = tsum;
+  __syncthreads();
+
+  // Tree reduce to 2x warpSize elements.
+# pragma unroll
+  for (int shift = CU1DBLOCK / 2; shift > warpSize; shift >>= 1) {
+    if (tid < shift) {
+      ssum[tid] += ssum[tid + shift];
+    }
+    __syncthreads();
+  }
+
+  // Warp reduce to 1 element. Threads implicitly synchronized within a warp.
+  if (tid < warpSize) {
+#   pragma unroll
+    for (int shift = warpSize; shift > 0; shift >>= 1) {
+      ssum[tid] += ssum[tid + shift];
+    }
+  }
+
+  // Broadcast result to all threads
+  __syncthreads();
+  const Real sum_t = ssum[0];
+
+  // normal: out_deriv - exp(out_value)
+  // penalised: out_deriv - exp(out_value) + (1+out_value)*exp(out_value)*(1-exp(out_value))
+  //            + exp(out_value)*sum_{j!=i} (1+out_value) exp(out_value)
+
+  // probably easier to do the last row above by summing across all, then subtracting
+  // (1+out_value) exp(out_value) for the current one:
+  // sum_t = (sum (1+out_value) exp(out_value)) // computed across threads like sum_e above
+  //           out_deriv - exp(out_value) + (1+out_value)*exp(out_value)*(1-exp(out_value))
+  //            + exp(out_value)*( sum_t - (1+out_value) exp(out_value) )
+
+  // Apply element-wise ...
+  for (int j = tid; j < in_deriv_dim.cols; j += CU1DBLOCK) {
+    in_deriv[in_deriv_start + j] = out_deriv[out_deriv_start + j]
+        - exp(out_value[out_value_start + j])
+        + (1+out_value[out_value_start + j])*exp(out_value[out_value_start + j])*(1-exp(out_value[out_value_start + j]))
+        + exp(out_value[out_value_start + j]) * ( sum_t - (1+out_value[out_value_start + j])*exp(out_value[out_value_start + j]) )
+  }
+
+  // Apply element-wise x = out_deriv - exp(value) * sum_e
+  /*for (int j = tid; j < in_deriv_dim.cols; j += CU1DBLOCK) {
+    in_deriv[in_deriv_start + j] = out_deriv[out_deriv_start + j]
+        - exp(out_value[out_value_start + j]) * sum_e;
+  }*/
+}
+
 
 /***********************************************************************
  * ANSI-C wrappers of CUDA kernels
@@ -3248,6 +3326,14 @@ void cudaF_diff_log_softmax(dim3 Gr, dim3 Bl, const MatrixDim in_deriv_dim,
                             const float* out_deriv, const int out_deriv_stride,
                             float* in_deriv) {
   _diff_log_softmax<<<Gr, Bl>>>(in_deriv_dim, out_value, out_value_stride,
+      out_deriv, out_deriv_stride, in_deriv);
+}
+
+void cudaF_diff_log_penalised_softmax(dim3 Gr, dim3 Bl, const MatrixDim in_deriv_dim,
+                                      const float* out_value, const int out_value_stride,
+                                      const float* out_deriv, const int out_deriv_stride,
+                                      float* in_deriv) {
+  _diff_log_penalised_softmax<<<Gr, Bl>>>(in_deriv_dim, out_value, out_value_stride,
       out_deriv, out_deriv_stride, in_deriv);
 }
 
@@ -3877,6 +3963,14 @@ void cudaD_diff_log_softmax(dim3 Gr, dim3 Bl, const MatrixDim in_deriv_dim,
                             const double* out_deriv, const int out_deriv_stride,
                             double* in_deriv) {
   _diff_log_softmax<<<Gr, Bl>>>(in_deriv_dim, out_value, out_value_stride,
+      out_deriv, out_deriv_stride, in_deriv);
+}
+
+void cudaD_diff_log_penalised_softmax(dim3 Gr, dim3 Bl, const MatrixDim in_deriv_dim,
+                                      const double* out_value, const int out_value_stride,
+                                      const double* out_deriv, const int out_deriv_stride,
+                                      double* in_deriv) {
+  _diff_log_penalised_softmax<<<Gr, Bl>>>(in_deriv_dim, out_value, out_value_stride,
       out_deriv, out_deriv_stride, in_deriv);
 }
 

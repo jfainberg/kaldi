@@ -1728,6 +1728,147 @@ void CuMatrixBase<Real>::DiffLogSoftmaxPerRow(
 }
 
 template<typename Real>
+void CuMatrixBase<Real>::DiffLogSoftmaxPenalisedPerRow(
+    const CuMatrixBase<Real> &out_value, const CuMatrixBase<Real> &out_deriv) {
+
+  KALDI_ASSERT(SameDim(out_value, out_deriv) && SameDim(out_value, *this));
+
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    Timer tim;
+
+    KALDI_WARN << "cuda_diff_log_penalised_softmax WIP";
+
+    // CUDA thread layout: one thread block per matrix-row.
+    dim3 dimBlock(CU1DBLOCK);
+    dim3 dimGrid(num_rows_);
+    cuda_diff_log_penalised_softmax(dimGrid, dimBlock, this->Dim(), out_value.Data(),
+                                    out_value.Stride(), out_deriv.Data(),
+                                    out_deriv.Stride(), data_);
+    CU_SAFE_CALL(cudaGetLastError());
+
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+  } else
+#endif
+  {
+    /*
+     Let the output be y, then for anoutput y_i, the derivative is:
+     d_i = t_i - exp(y_i) + (1+y_i) exp(y_i) (1-exp(y_i))
+            + exp(y_i) * sum_{j!=i} (1+y_j) exp(y_j)
+          
+    The part before the sum we can do directly for the entire row (or even across egs):
+    d_tmp = t - exp(y) + (1+y) exp(y) (1-exp(y))
+
+    For the second part (and the first), we'll need the "atoms":
+      exp(y)
+      1-exp(y)
+      1+exp(y)
+      innerprod(1+y, exp(y))
+
+    For a single example y_i, the sum is: exp(y_i) * (innerprod(1+y, exp(y)) - (1+y_i)*y_i )
+    We need to subtract the last term because it's not in the sum.
+
+    We can do the inner product across the entire matrics by doing normal matrix multiplication
+    with 1+y and trans(exp(y)), but we would only need the diagonal, so maybe wasteful.
+
+    Then across classes we can do:
+    exp(y) * innerprod(1+y, exp(y)) - elementwise(1+y_i,y_i)
+
+    we want to multiply the same innerprod with every class (col) for a row
+    */
+
+    // TODO: All the below we do references to ourselves! Don't want to do that for all of them!
+    //
+    KALDI_WARN << "CPU implementation of penalised log softmax is likely wrong, use CUDA!";
+
+    const CuMatrixBase<Real> &Y(out_value), &E(out_deriv); 
+    CuMatrixBase<Real> &D(*this);
+    CuMatrixBase<Real> &D2(*this);
+
+    D.CopyFromMat(Y);
+    D2.CopyFromMat(Y);                      // y
+    D.ApplyExp();                           // exp(y)
+
+
+    CuMatrixBase<Real> &Ym(*this); 
+    CuMatrixBase<Real> &Ym2(*this); 
+    Ym.CopyFromMat(Y);
+    Ym2.CopyFromMat(Y);
+    Ym.Set(1.0);
+    Ym2.Set(1.0);
+    Ym.AddMat(-1.0, D, kNoTrans);          // 1.0 - exp(y_i)
+    Ym2.AddMat(1.0, D2, kNoTrans);          // 1.0 + y_i
+
+    Ym2.MulElements(D);                     // (1+y_i) * exp(y_i)
+    D.AddMatMatElements(1.0, Ym2, Ym, -1.0); // -exp(y_i) + (1+y_i)*exp(y_i)*(1.0-exp(y_i))
+    D.AddMat(1.0, E, kNoTrans);             // t_i - exp(y_i) + (1+y_i)*exp(y_i)*(1.0-exp(y_i))
+
+    // D = t_tmp
+
+
+    CuMatrixBase<Real> &S(*this);
+
+    S.CopyFromMat(Y);
+    S.ApplyExp();                           // exp(y)
+
+    Ym.Set(1.0);
+    Ym.AddMat(1.0, D2, kNoTrans);            // 1.0 + y_i
+
+    // create inner prod matrix, where each col for a row has the same sum
+    // elementwise(1+y, exp(y)) then SumColumnRanges, then el.multiply with exp(y) and subtract the thing below
+
+    S.MulElements(Ym);                     // elementwise(1+y_i,exp(y_i)) = (1+y_i)*exp(y_i)
+
+
+    // def indexes, so that every element contains sum across entire column
+    std::vector<Int32Pair> indexes_tmp(D.NumCols());
+    for (int32 j = 0; j < D.NumCols(); j++) {
+       indexes_tmp[j].first = 0;
+       indexes_tmp[j].second = D.NumCols();
+    }
+    
+    CuArray<Int32Pair> indexes(indexes_tmp);
+    CuMatrixBase<Real> &S2(*this); 
+    S2.SumColumnRanges(S, indexes);                 // matrix with (r,c) = sum across c
+
+    // subtract individual elements, S,  to get the correct sum (j!=i)
+    S2.AddMat(-1.0, S, kNoTrans);                   // sum_j ( ) - .. = sum_{j!=i}
+    CuMatrixBase<Real> &S3(*this);
+    S3.CopyFromMat(Y);
+    S3.ApplyExp();
+    S2.MulElements(S3);                             // y_i * sum_{j!=i} (  )
+    
+
+    D.AddMat(1.0, S2, kNoTrans);                    // final
+
+    // MulElements() // elementwise multiplication
+
+    /*
+     Let the output be y, then
+     y_i = x_i - log(sum_i exp(x_i))
+     where x_i is the input to the component. The Jacobian matrix of this
+     function is
+     J = I - 1 exp(y^T)
+     where 1 is a vector of ones. Let the derivative vector at the output be e,
+     and at the input be d, then we have
+     d = e - exp(y) Sum(e)
+     d_i = e_i - exp(y_i) Sum(e)
+     */
+/*
+    const CuMatrixBase<Real> &Y(out_value), &E(out_deriv);
+    CuMatrixBase<Real> &D(*this);
+
+    D.CopyFromMat(Y);
+    D.ApplyExp();                           // exp(y)
+    CuVector<Real> E_sum(D.NumRows()); // Initializes to zero
+    E_sum.AddColSumMat(1.0, E);             // Sum(e)
+    D.MulRowsVec(E_sum);                    // exp(y) Sum(e)
+    D.Scale(-1.0);                          // - exp(y) Sum(e)
+    D.AddMat(1.0, E, kNoTrans);             // e - exp(y_i) Sum(e)*/
+  }
+}
+
+template<typename Real>
 void CuMatrixBase<Real>::DiffXent(const CuArray<int32> &tgt,
                                   CuVector<Real> *log_post_tgt) {
 

@@ -604,6 +604,15 @@ inline void cuda_diff_log_softmax(dim3 Gr, dim3 Bl,
   cudaF_diff_log_softmax(Gr, Bl, in_deriv_dim, out_value, out_value_stride,
                          out_deriv, out_deriv_stride, in_deriv);
 }
+inline void cuda_diff_log_penalised_softmax(dim3 Gr, dim3 Bl,
+                                            const MatrixDim in_deriv_dim,
+                                            const float* out_value,
+                                            const int out_value_stride,
+                                            const float* out_deriv,
+                                            const int out_deriv_stride, float* in_deriv) {
+  cudaF_diff_log_penalised_softmax(Gr, Bl, in_deriv_dim, out_value, out_value_stride,
+                                   out_deriv, out_deriv_stride, in_deriv);
+}
 inline void cuda_copy_rows_from_vec(dim3 Gr, dim3 Bl, float *mat_out,
                                     MatrixDim d_out, const float *v_in) {
   cudaF_copy_rows_from_vec(Gr, Bl, mat_out, d_out, v_in);
@@ -1140,6 +1149,16 @@ inline void cuda_diff_log_softmax(dim3 Gr, dim3 Bl,
                                   double* in_deriv) {
   cudaD_diff_log_softmax(Gr, Bl, in_deriv_dim, out_value, out_value_stride,
                          out_deriv, out_deriv_stride, in_deriv);
+}
+inline void cuda_diff_log_penalised_softmax(dim3 Gr, dim3 Bl,
+                                            const MatrixDim in_deriv_dim,
+                                            const double* out_value,
+                                            const int out_value_stride,
+                                            const double* out_deriv,
+                                            const int out_deriv_stride,
+                                            double* in_deriv) {
+  cudaD_diff_log_penalised_softmax(Gr, Bl, in_deriv_dim, out_value, out_value_stride,
+                                   out_deriv, out_deriv_stride, in_deriv);
 }
 inline void cuda_copy_rows_from_vec(dim3 Gr, dim3 Bl, double *mat_out,
                                     MatrixDim d_out, const double *v_in) {

@@ -334,6 +334,10 @@ class CuMatrixBase {
   void DiffLogSoftmaxPerRow(const CuMatrixBase<Real> &out_value,
                             const CuMatrixBase<Real> &out_deriv);
 
+  /// As above, but penalised by output entropy
+  void DiffLogSoftmaxPenalisedPerRow(const CuMatrixBase<Real> &out_value,
+                            const CuMatrixBase<Real> &out_deriv);
+
   /// Differentiate the block [softmax+cross-entropy] :
   /// dE/da = posterior_mat - target_mat,
   /// 'E' is error function, 'a' is activation on softmax input
