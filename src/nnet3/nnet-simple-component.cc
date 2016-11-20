@@ -3203,8 +3203,7 @@ void LogSoftmaxPenalisedComponent::Backprop(const std::string &debug_info,
                                    CuMatrixBase<BaseFloat> *in_deriv) const {
   if (in_deriv == NULL)
     return;
-  // TODO: update this to reflect penalised objective
-  in_deriv->DiffLogSoftmaxPerRow(out_value, out_deriv);
+  in_deriv->DiffLogSoftmaxPenalisedPerRow(out_value, out_deriv);
 }
 
 
