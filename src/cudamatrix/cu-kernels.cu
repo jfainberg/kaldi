@@ -2696,8 +2696,8 @@ static void _diff_log_penalised_softmax(const MatrixDim in_deriv_dim,
   for (int j = tid; j < in_deriv_dim.cols; j += CU1DBLOCK) {
     in_deriv[in_deriv_start + j] = out_deriv[out_deriv_start + j]
         - exp(out_value[out_value_start + j])
-        + (1+out_value[out_value_start + j])*exp(out_value[out_value_start + j])*(1-exp(out_value[out_value_start + j]))
-        + exp(out_value[out_value_start + j]) * ( sum_t - (1+out_value[out_value_start + j])*exp(out_value[out_value_start + j]) )
+        + 1.0 * ( (1+out_value[out_value_start + j])*exp(out_value[out_value_start + j])*(1-exp(out_value[out_value_start + j]))
+        +       exp(out_value[out_value_start + j]) * ( sum_t - (1+out_value[out_value_start + j])*exp(out_value[out_value_start + j]) ) )
   }
 
   // Apply element-wise x = out_deriv - exp(value) * sum_e
