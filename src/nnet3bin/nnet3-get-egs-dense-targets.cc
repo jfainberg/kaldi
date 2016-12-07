@@ -196,7 +196,7 @@ int main(int argc, char *argv[]) {
     
     po.Read(argc, argv);
 
-    if (po.NumArgs() != 3 || po.NumArgs() != 4) {
+    if (po.NumArgs() != 3 && po.NumArgs() != 4) {
       po.PrintUsage();
       exit(1);
     }
