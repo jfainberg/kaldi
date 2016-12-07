@@ -32,6 +32,7 @@ namespace nnet3 {
 
 static void ProcessFile(const MatrixBase<BaseFloat> &feats,
                         const MatrixBase<BaseFloat> *ivector_feats,
+                        const MatrixBase<BaseFloat> *aux_feats,
                         const MatrixBase<BaseFloat> &targets,
                         const std::string &utt_id,
                         bool compress,
@@ -86,6 +87,22 @@ static void ProcessFile(const MatrixBase<BaseFloat> &feats,
       Matrix<BaseFloat> ivector(1, ivector_feats->NumCols());
       ivector.Row(0).CopyFromVec(ivector_feats->Row(closest_frame));
       eg.io.push_back(NnetIo("ivector", 0, ivector));
+    }
+
+    if (aux_feats != NULL) {
+      KALDI_ASSERT(aux_feats->NumRows() > 0);
+      Matrix<BaseFloat> aux(tot_frames, aux_feats->NumCols());
+      // Let's use all frames as the input for now
+      for (int32 j = -left_context; j < frames_per_eg + right_context; j++) {
+        int32 t2 = j + t;
+        if (t2 < 0) t2 = 0; // if we're at the beginning of the features
+        if (t2 >= feats.NumRows()) t2 = feats.NumRows() - 1; // if at the end 
+        SubVector<BaseFloat> src_aux(*aux_feats, t2),
+            dest_aux(aux, j + left_context);
+        dest_aux.CopyFromVec(src_aux);
+      }
+      eg.io.push_back(NnetIo("input_aux", - left_context,
+                             input_frames));
     }
 
     // add the labels.
@@ -146,6 +163,8 @@ int main(int argc, char *argv[]) {
         "\n"
         "Usage:  nnet3-get-egs-dense-targets --num-targets=<n> [options] "
         "<features-rspecifier> <targets-rspecifier> <egs-out>\n"
+        " or: nnet3-get-egs-dense-targets --num-targets=<n> [options] "
+        "<features-rspecifier> <aux-features-rspecifier> <targets-rspecifier> <egs-out>\n"
         "\n"
         "An example [where $feats expands to the actual features]:\n"
         "nnet-get-egs-dense-targets --num-targets=26 --left-context=12 \\\n"
@@ -177,7 +196,7 @@ int main(int argc, char *argv[]) {
     
     po.Read(argc, argv);
 
-    if (po.NumArgs() != 3) {
+    if (po.NumArgs() != 3 || po.NumArgs() != 4) {
       po.PrintUsage();
       exit(1);
     }
@@ -185,15 +204,29 @@ int main(int argc, char *argv[]) {
     if (num_targets <= 0)
       KALDI_ERR << "--num-targets options is required.";
 
-    std::string feature_rspecifier = po.GetArg(1),
-        matrix_rspecifier = po.GetArg(2),
-        examples_wspecifier = po.GetArg(3);
+    std::string feature_rspecifier,
+                matrix_rspecifier,
+                examples_wspecifier,
+                aux_feature_rspecifier;
+ 
+    if (po.NumArgs() == 3) {
+      feature_rspecifier = po.GetArg(1),
+          matrix_rspecifier = po.GetArg(2),
+          examples_wspecifier = po.GetArg(3);
+    } else if (po.NumArgs() == 4) {
+      feature_rspecifier = po.GetArg(1),
+          aux_feature_rspecifier = po.GetArg(2),
+          matrix_rspecifier = po.GetArg(3),
+          examples_wspecifier = po.GetArg(4);
+   }
 
     // Read in all the training files.
     SequentialBaseFloatMatrixReader feat_reader(feature_rspecifier);
     RandomAccessBaseFloatMatrixReader matrix_reader(matrix_rspecifier);
     NnetExampleWriter example_writer(examples_wspecifier);
     RandomAccessBaseFloatMatrixReader ivector_reader(ivector_rspecifier);
+    // aux_feature_rspecifier.empty() == true if not set
+    RandomAccessBaseFloatMatrixReader aux_feat_reader(aux_feature_rspecifier); 
     
     int32 num_done = 0, num_err = 0;
     int64 num_frames_written = 0, num_egs_written = 0;
@@ -225,6 +258,16 @@ int main(int argc, char *argv[]) {
             ivector_feats = &(ivector_reader.Value(key));
           }
         }
+        const Matrix<BaseFloat> *aux_feats = NULL;
+        if (!aux_feature_rspecifier.empty()) {
+          if (!aux_feat_reader.HasKey(key)) {
+            KALDI_WARN << "No aux feats for utterance " << key;
+            num_err++;
+            continue;
+          } else {
+            aux_feats = &(aux_feat_reader.Value(key));
+          }
+        }
 
         if (ivector_feats != NULL &&
             (abs(feats.NumRows() - ivector_feats->NumRows()) > length_tolerance
@@ -235,8 +278,15 @@ int main(int argc, char *argv[]) {
           num_err++;
           continue;
         }
+
+        if (aux_feats != NULL && (feats.NumRows() != aux_feats->NumRows())) {
+          KALDI_WARN << "Aux feats length " << aux_feats->NumRows()
+                     << " does not match feat length " << feats.NumRows();
+          num_err++;
+          continue;
+        }
           
-        ProcessFile(feats, ivector_feats, target_matrix, key, compress,
+        ProcessFile(feats, ivector_feats, aux_feats, target_matrix, key, compress,
                     num_targets, left_context, right_context, num_frames,
                     &num_frames_written, &num_egs_written,
                     &example_writer);
