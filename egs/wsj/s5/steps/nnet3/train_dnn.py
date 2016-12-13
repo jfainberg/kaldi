@@ -63,6 +63,10 @@ def GetArgs():
                         default = None, action = NullstrToNoneAction,
                         help="""String to provide options directly to steps/nnet3/get_egs.sh script""")
 
+    # model options
+    parser.add_argument("--model", type=str, dest='model',
+                        default = None, help="Model-dir to initialise from, as when finetuning")
+  
     # trainer options
     parser.add_argument("--trainer.srand", type=int, dest='srand',
                         default = 0,
@@ -370,7 +374,11 @@ def TrainOneIteration(dir, iter, srand, egs_dir,
                            # best.
         cur_num_hidden_layers = 1 + iter / add_layers_period
         config_file = "{0}/configs/layer{1}.config".format(dir, cur_num_hidden_layers)
-        raw_model_string = "nnet3-am-copy --raw=true --learning-rate={lr} {dir}/{iter}.mdl - | nnet3-init --srand={srand} - {config} - |".format(lr=learning_rate, dir=dir, iter=iter, srand=iter + srand, config=config_file )
+        ## MODEL ADAPT: don't need to do init when adapting
+        if (args.model == None):
+            raw_model_string = "nnet3-am-copy --raw=true --learning-rate={lr} {dir}/{iter}.mdl - | nnet3-init --srand={srand} - {config} - |".format(lr=learning_rate, dir=dir, iter=iter, srand=iter + srand, config=config_file )
+        else:
+            raw_model_string = "nnet3-am-copy --raw=true --learning-rate={lr} {dir}/{iter}.mdl - |".format(lr=learning_rate, dir=dir, iter=iter) 
     else:
         do_average = True
         if iter == 0:
@@ -467,13 +475,28 @@ def Train(args, run_opts):
     # we do this as it's a convenient way to get the stats for the 'lda-like'
     # transform.
 
+    if (args.model is not None):
+        ## MODEL ADAPT
+        logger.info("Will do adaptation ontop of existing model.")
+        #logger.info("Copying original model dir {0} to exp dir {1}".format(
+                    #args.model, args.dir))
+        #for f in ['configs', 'cmvn_opts', 'final.mat', 'final.mdl', 'lda.mat', 'lda_stats' \
+                  #'num_jobs', 'pdf_counts', 'presoftmax_prior_scale.vec', 'splice_opts', 'tree']:
+            #RunKaldiCommand("""cp -r {si_modeldir}/{fi} {dir}/""".format(
+                            #si_modeldir = args.model, fi=f, dir=args.dir))
+            ## We start training from 0.mdl
+            #RunKaldiCommand("""cp {dir}/final.mdl {dir}/0.mdl""".format(dir=args.dir))
+        
+
     if (args.stage <= -5):
-        logger.info("Initializing a basic network for estimating preconditioning matrix")
-        RunKaldiCommand("""
-{command} {dir}/log/nnet_init.log \
-    nnet3-init --srand=-2 {dir}/configs/init.config {dir}/init.raw
-    """.format(command = run_opts.command,
-               dir = args.dir))
+        ## MODEL ADAPT: don't need to init network if adapting
+        if (args.model == None):
+          logger.info("Initializing a basic network for estimating preconditioning matrix")
+          RunKaldiCommand("""
+  {command} {dir}/log/nnet_init.log \
+      nnet3-init --srand=-2 {dir}/configs/init.config {dir}/init.raw
+      """.format(command = run_opts.command,
+                 dir = args.dir))
 
     default_egs_dir = '{0}/egs'.format(args.dir)
     if (args.stage <= -4) and args.egs_dir is None:
@@ -506,14 +529,14 @@ def Train(args, run_opts):
     # use during decoding
     CopyEgsPropertiesToExpDir(egs_dir, args.dir)
 
-    if (args.stage <= -3):
+    if (args.stage <= -3) and args.model is None:
         logger.info('Computing the preconditioning matrix for input features')
 
         ComputePreconditioningMatrix(args.dir, egs_dir, num_archives, run_opts,
                                      max_lda_jobs = args.max_lda_jobs,
                                      rand_prune = args.rand_prune)
 
-    if (args.stage <= -2):
+    if (args.stage <= -2) and args.model is None:
         logger.info("Computing initial vector for FixedScaleComponent before"
                     " softmax, using priors^{prior_scale} and rescaling to"
                     " average 1".format(prior_scale = args.presoftmax_prior_scale_power))
@@ -524,7 +547,9 @@ def Train(args, run_opts):
 
     if (args.stage <= -1):
         logger.info("Preparing the initial acoustic model.")
-        PrepareInitialAcousticModel(args.dir, args.ali_dir, run_opts)
+        ## MODEL ADAPT: We have already prepared it above (0.mdl)
+        if (args.model is None):
+            PrepareInitialAcousticModel(args.dir, args.ali_dir, run_opts)
 
 
     # set num_iters so that as close as possible, we process the data $num_epochs

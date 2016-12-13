@@ -210,10 +210,13 @@ int main(int argc, char *argv[]) {
                 aux_feature_rspecifier;
  
     if (po.NumArgs() == 3) {
+      KALDI_LOG << "Not using aux features";
       feature_rspecifier = po.GetArg(1),
           matrix_rspecifier = po.GetArg(2),
           examples_wspecifier = po.GetArg(3);
     } else if (po.NumArgs() == 4) {
+      KALDI_LOG << "Using aux features";
+      KALDI_LOG << "Aux: "<<po.GetArg(2);
       feature_rspecifier = po.GetArg(1),
           aux_feature_rspecifier = po.GetArg(2),
           matrix_rspecifier = po.GetArg(3),

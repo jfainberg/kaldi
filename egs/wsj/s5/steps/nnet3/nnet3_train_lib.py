@@ -210,7 +210,7 @@ def GenerateEgs(data, alidir, egs_dir,
                 left_context, right_context,
                 valid_left_context, valid_right_context,
                 run_opts, stage = 0,
-                feat_type = 'raw', online_ivector_dir = None,
+                feat_type = 'delta', online_ivector_dir = None,
                 samples_per_iter = 20000, frames_per_eg = 20, srand = 0,
                 egs_opts = None, cmvn_opts = None, transform_dir = None):
 
