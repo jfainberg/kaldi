@@ -232,15 +232,18 @@ if [ $stage -le 2 ]; then
       weight-post ark:- "ark,s,cs:gunzip -c $dir/weights.gz|" ark:- \| \
       ivector-extract --acoustic-weight=$posterior_scale --compute-objf-change=true \
         --max-count=$max_count --spk2utt=ark:$this_sdata/JOB/spk2utt \
-      $srcdir/final.ie "$feats" ark,s,cs:- ark,t:$dir/ivectors_spk.JOB.ark || exit 1;
+      $srcdir/final.ie "$feats" ark,s,cs:- ark,t,scp:$dir/ivectors_spk.JOB.ark,$dir/ivectors_spk.JOB.scp || exit 1;
   else
     $cmd JOB=1:$nj $dir/log/extract_ivectors.JOB.log \
       gmm-global-get-post --n=$num_gselect --min-post=$min_post $srcdir/final.dubm "$gmm_feats" ark:- \| \
       ivector-extract --acoustic-weight=$posterior_scale --compute-objf-change=true \
         --max-count=$max_count --spk2utt=ark:$this_sdata/JOB/spk2utt \
-      $srcdir/final.ie "$feats" ark,s,cs:- ark,t:$dir/ivectors_spk.JOB.ark || exit 1;
+      $srcdir/final.ie "$feats" ark,s,cs:- ark,t,scp:$dir/ivectors_spk.JOB.ark,$dir/ivectors_spk.JOB.scp || exit 1;
   fi
 fi
+
+echo "$0: combining spk iVectors across jobs"
+for j in $(seq $nj); do cat $dir/ivectors_spk.$j.scp; done >$dir/ivectors_spk.scp || exit 1;
 
 # get an utterance-level set of iVectors (just duplicate the speaker-level ones).  
 # note: if $this_sdata is set $dir/split$nj, then these won't be real speakers, they'll
