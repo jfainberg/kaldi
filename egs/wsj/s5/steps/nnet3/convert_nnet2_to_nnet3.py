@@ -127,7 +127,9 @@ def Read(args):
   # Convert nnet2 model to text
   # We replace AffineComponentPreconditioned with AffineComponent,
   # as the former is not in nnet3
-  subprocess.call('nnet-am-copy --remove-preconditioning=true --binary=false {0}/{1} {2}/{1}'.format(args.nnet2_dir, args.model, args.tmpdir), shell=True)
+  result = subprocess.call('nnet-am-copy --remove-preconditioning=true --binary=false {0}/{1} {2}/{1}'.format(args.nnet2_dir, args.model, args.tmpdir), shell=True)
+  if (result != 0):
+    raise OSError('Could not run nnet-am-copy. Did you source path.sh?')
 
   # Read nnet2 acoustic model and write components to tmpdir/*
   with open(os.path.join(args.tmpdir, args.model)) as f:
@@ -267,7 +269,7 @@ def Main():
   # Combine the text files in tmpdir to an nnet3 model.
   # SpliceComponents are converted to Descriptors for the 
   # succeeding component.
-  #Write(args, tmpdir, structure) 
+  Write(args, tmpdir, structure) 
 
     # traversing through them... ReadSpliceComponent?
     # SpliceComponent isn't necessarily first... (or at all?)
