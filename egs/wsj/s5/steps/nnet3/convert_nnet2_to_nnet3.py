@@ -7,7 +7,6 @@
 
 
 ## TODO: 
-# Change reading to read entire file
 # Change way we parse to using str.find('[', start, end)
 # Use enumerate(list): matrix.append(linparams + ' ' + bias[i]) to create matrices
 
@@ -261,13 +260,13 @@ def Read(args):
       # get key-value pairs
       # '<InputDim> 2000 <OutputDim> 250 </PnormComponent>'  -->  [('<InputDim>', '2000'), ('<OutputDim>', '250')]
         pairs = re.findall('(<\w+>) (\w+)', line)
-        nnet3.AddComponent(current_component, dict(pairs)
+        nnet3.AddComponent(current_component, dict(pairs))
         filename = node_name + str(counts[node_name])
       #nnet3.AddComponent(current_component, pairs, filename)
 
       structure.append(tup(current_component, filename))
-      # fc = open(os.path.join(tmpdir, filename), 'w')
-      # fc.write(line)
+      fc = open(os.path.join(tmpdir, filename), 'w')
+      fc.write(line)
       
     # Remaining components
     for line in f:
@@ -280,24 +279,46 @@ def Read(args):
         structure.append(tup(current_component, filename))
 
         line = ConsumeToken(current_component, line)
-        pairs = re.findall('(<\w+>) (\w+)', line)
-        pairs = dict(pairs)
-        nnet3.AddComponent(current_component, pairs)
+        pairs = re.findall('(<\w+>) ([\w.]+)', line)
+        for item in pairs:
+          line = ConsumeToken(item[0], line)
+          line = ConsumeToken(item[1], line)
+        nnet3.AddComponent(current_component, dict(pairs))
 
         # New component, new file
-        # fc.close(); fc = open(os.path.join(tmpdir, filename), 'w')
+        if '<LinearParams>' in line:
+          fc.close(); fc = open(os.path.join(tmpdir, filename + '_linear_params'), 'w')
+          # fc.write('[ \n')
+          continue
+        else:
+          fc.close(); fc = open(os.path.join(tmpdir, filename), 'w')
       elif current_component == '</Components>':
         # Priors
         line = ConsumeToken('</Components>', line)
         line = ConsumeToken('</Nnet>', line)
         fc.close(); fc = open(os.path.join(tmpdir, 'priors'), 'w')
+      elif '<BiasParams>' in line:
+        fc.close(); fc = open(os.path.join(tmpdir, filename + '_bias'), 'w')
+        line = ConsumeToken('<BiasParams>', line)
+        idx_start = line.find('[')
+        idx_end = line.find(']')
+        fc.write(line[idx_start+1:idx_end] + '\n')
+        continue
+      elif line.find(']'):
+        idx_end = line.find(']')
+        fc.write(line[:idx_end] + '\n')
+        continue
+      elif current_component.startswith('</') or 'IsGradient' in line: # TODO, not working...
+        continue # don't write e.g. </AffineComponent>
       # Continue writing
       #if '<P>' in line:
         # P-parameter not present in Pnorm components in nnet3
         #line = re.sub('<P> [0-9] ', '', line)
-      # fc.write(line)
+      fc.write(line)
 
-    # fc.close()
+      #paste <( sed '$ s/.$//' fixed-affine1_linear_params) <(sed 's: :\n:g' fixed-affine1_bias)
+
+    fc.close()
 
     # check if we've read all components
     if num_components != nnet3.num_components:
@@ -379,7 +400,6 @@ def Main():
   # as given in NODE_NAMES.
   # Each instance is added to the list 'structure'.
   [tmpdir, structure] = Read(args)
-  print structure
 
   # Combine the text files in tmpdir to an nnet3 model.
   # SpliceComponents are converted to Descriptors for the 
