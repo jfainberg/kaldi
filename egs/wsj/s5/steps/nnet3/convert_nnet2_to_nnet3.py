@@ -6,7 +6,7 @@
 # These can be modified in the configuration section below.
 
 
-## TODO:
+## TODO: 
 # Change reading to read entire file
 # Change way we parse to using str.find('[', start, end)
 # Use enumerate(list): matrix.append(linparams + ' ' + bias[i]) to create matrices
@@ -90,6 +90,83 @@ def GetArgs():
 
   return args
 
+class Nnet3Model(object):
+  '''
+  Holds configuration for an Nnet3 model 
+  in a config style format.
+  '''
+  
+  def __init__(self):
+    self.input_dim = -1
+    self.output_dim = -1
+    self.counts = defaultdict(int)
+    self.num_components = 0
+    self.context = ''
+    self.components = []
+
+  def AddComponent(self, component, pairs):
+    '''
+    Adds components to model s.
+
+    Most of the formatting happens here.
+    '''
+    self.num_components += 1
+
+    # remove nnet2 specific tokens
+    if component == '<PnormComponent>' and '<P>' in pairs:
+      pairs.pop('<P>')
+
+    # format pairs: {'<InputDim>':43} -> {'input-dim':43}
+    pairs = ['{0}={1}'.format(TokenToString(key),pairs[key]) for key in pairs]
+    
+    # keep track of layer type number (e.g. affine3)
+    node_name = NODE_NAMES[component]
+    self.counts[node_name] += 1
+
+    # e.g. affine3
+    ident = node_name + str(self.counts[node_name])
+
+    # <PnormComponent> -> PnormComponent
+    component = component[1:-1]
+
+    self.components.append((ident, component, pairs))
+
+  def WriteConfig(self, filename):
+    '''
+    Write config to file filename.
+    '''
+    with open(filename, 'w') as f:
+
+      for component in self.components:
+        config_string = ' '.join(component[2])
+        f.write('component name={name} type={comp_type} {config_string}\n'.format(name=component[0], comp_type=component[1], config_string=config_string))
+          # component name=L0_fixaffine type=FixedAffineComponent matrix=exp/nnet3/tdnn/configs/lda.mat
+          # component name=Tdnn_0_affine type=NaturalGradientAffineComponent input-dim=215 output-dim=1024  bias-stddev=0  max-change=0.75
+          # component name=Tdnn_0_relu type=RectifiedLinearComponent dim=1024
+          # component name=Tdnn_0_renorm type=NormalizeComponent dim=1024 target-rms=1.0
+
+      f.write('\n# Component nodes\n')
+      f.write('input-node name=input dim={0}\n'.format(self.input_dim))
+      previous_component=MakeSpliceString('input', self.context)
+      for component in self.components:
+        f.write('component-node name={name} component={name} input={inp}\n'.format(name=component[0], inp=previous_component))
+        previous_component = component[0]
+      # component-node name=Tdnn_1_affine component=Tdnn_1_affine input=Append(Offset(Tdnn_0_renorm, -1) , Offset(Tdnn_0_renorm, 2))
+      # component-node name=Tdnn_1_relu component=Tdnn_1_relu input=Tdnn_1_affine
+      # component-node name=Tdnn_1_renorm component=Tdnn_1_renorm input=Tdnn_1_relu
+      logger.warning('Assuming linear objective.')
+      f.write('output-node name=output input={inp} objective={obj}\n'.format(inp=previous_component, obj='linear'))
+
+def TokenToString(token):
+  '''
+  <InputDim> -> input-dim
+  '''
+  # remove <>
+  string = token[1:-1]
+  # InputDim to input-dim
+  string = re.sub(r'((?<=[a-z])[A-Z]|(?<!\A)[A-Z](?=[a-z]))', r'-\1', string).lower()
+  return string
+
 def IsComponent(component):
   # Recognises opening tags "<Component>"
   # *not* closing tags "</Component>"
@@ -124,6 +201,9 @@ def Read(args):
   # args.tmpdir = None if not set
   tmpdir = tempfile.mkdtemp(dir=args.tmpdir) 
 
+  # Set up Nnet3 model object
+  nnet3 = Nnet3Model()
+
   # Convert nnet2 model to text
   # We replace AffineComponentPreconditioned with AffineComponent,
   # as the former is not in nnet3
@@ -131,7 +211,8 @@ def Read(args):
   if (result != 0):
     raise OSError('Could not run nnet-am-copy. Did you source path.sh?')
 
-  # Read nnet2 acoustic model and write components to tmpdir/*
+  # Read nnet2 acoustic model, write components to tmpdir/*, 
+  # and a config to tmpdir/init_nnet3.config
   with open(os.path.join(args.tmpdir, args.model)) as f:
     # Transition model
     line = f.readline()
@@ -156,15 +237,37 @@ def Read(args):
     structure = [] # ordered list of named tuples
     counts = defaultdict(int) # node names counts, e.g. affine:2
 
+    # Every time we see a component, we get the component name and
+    # type, then we store each key-value pair (e.g. "<InputDim> 43")
+    splice_components = ['<SpliceComponent>', '<SpliceMaxCompoment>']
+
     # First component
     current_component = line.split()[0]
     if IsComponent(current_component):
       node_name = NODE_NAMES[current_component]
       counts[node_name] += 1
-      filename = node_name + str(counts[node_name])
+      line = ConsumeToken(current_component, line)
+
+      # if splice component then deal with it slightly differently
+      if current_component in splice_components:
+        line = ConsumeToken('<InputDim>', line)
+        [input_dim, _, line] = line.strip().partition(' ')
+        line = ConsumeToken('<Context>', line)
+        context = line.strip()[1:-1].split()
+        nnet3.input_dim = input_dim
+        nnet3.context = context
+        filename = node_name + str(counts[node_name])
+      else:
+      # get key-value pairs
+      # '<InputDim> 2000 <OutputDim> 250 </PnormComponent>'  -->  [('<InputDim>', '2000'), ('<OutputDim>', '250')]
+        pairs = re.findall('(<\w+>) (\w+)', line)
+        nnet3.AddComponent(current_component, dict(pairs)
+        filename = node_name + str(counts[node_name])
+      #nnet3.AddComponent(current_component, pairs, filename)
+
       structure.append(tup(current_component, filename))
-      fc = open(os.path.join(tmpdir, filename), 'w')
-      fc.write(line)
+      # fc = open(os.path.join(tmpdir, filename), 'w')
+      # fc.write(line)
       
     # Remaining components
     for line in f:
@@ -175,8 +278,14 @@ def Read(args):
         counts[node_name] += 1
         filename = node_name + str(counts[node_name])
         structure.append(tup(current_component, filename))
+
+        line = ConsumeToken(current_component, line)
+        pairs = re.findall('(<\w+>) (\w+)', line)
+        pairs = dict(pairs)
+        nnet3.AddComponent(current_component, pairs)
+
         # New component, new file
-        fc.close(); fc = open(os.path.join(tmpdir, filename), 'w')
+        # fc.close(); fc = open(os.path.join(tmpdir, filename), 'w')
       elif current_component == '</Components>':
         # Priors
         line = ConsumeToken('</Components>', line)
@@ -186,9 +295,15 @@ def Read(args):
       #if '<P>' in line:
         # P-parameter not present in Pnorm components in nnet3
         #line = re.sub('<P> [0-9] ', '', line)
-      fc.write(line)
+      # fc.write(line)
 
-    fc.close()
+    # fc.close()
+
+    # check if we've read all components
+    if num_components != nnet3.num_components:
+      logger.error('Did not read all components succesfully: {0}/{1}'.format(nnet3.num_components, num_components))
+
+    nnet3.WriteConfig(os.path.join(tmpdir, 'config'))
 
   return tmpdir, structure
 
@@ -269,7 +384,7 @@ def Main():
   # Combine the text files in tmpdir to an nnet3 model.
   # SpliceComponents are converted to Descriptors for the 
   # succeeding component.
-  Write(args, tmpdir, structure) 
+  # Write(args, tmpdir, structure) 
 
     # traversing through them... ReadSpliceComponent?
     # SpliceComponent isn't necessarily first... (or at all?)
