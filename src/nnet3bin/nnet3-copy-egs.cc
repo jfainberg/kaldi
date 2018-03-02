@@ -157,11 +157,11 @@ void FilterExample(const NnetExample &eg,
     NnetIo &io_out = eg_out->io[i];
     const std::string &name = io_in.name;
     io_out.name = name;
-    if (name == "input") {
+    if (name == "input" || name == "input_b") {
       min_t = min_input_t;
       max_t = max_input_t;
       is_input_or_output = true;
-    } else if (name == "output") {
+    } else if (name == "output" || name == "output_b") {
       min_t = min_output_t;
       max_t = max_output_t;
       is_input_or_output = true;
