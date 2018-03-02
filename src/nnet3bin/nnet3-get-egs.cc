@@ -38,6 +38,8 @@ static bool ProcessFile(const GeneralMatrix &feats,
                         bool compress,
                         int32 num_pdfs,
                         int32 length_tolerance,
+                        std::string second_input_name,
+                        std::string second_output_name,
                         UtteranceSplitter *utt_splitter,
                         NnetExampleWriter *example_writer) {
   int32 num_input_frames = feats.NumRows();
@@ -82,6 +84,9 @@ static bool ProcessFile(const GeneralMatrix &feats,
     NnetExample eg;
     // call the regular input "input".
     eg.io.push_back(NnetIo("input", -chunk.left_context, input_frames));
+    if (!second_input_name.empty()) {
+      eg.io.push_back(NnetIo(second_input_name, -chunk.left_context, input_frames));
+    }
 
     if (ivector_feats != NULL) {
       // if applicable, add the iVector feature.
@@ -120,6 +125,9 @@ static bool ProcessFile(const GeneralMatrix &feats,
     }
 
     eg.io.push_back(NnetIo("output", num_pdfs, 0, labels));
+    if (!second_output_name.empty()) {
+      eg.io.push_back(NnetIo(second_output_name, num_pdfs, 0, labels));
+    }
 
     if (compress)
       eg.Compress();
@@ -154,6 +162,8 @@ int main(int argc, char *argv[]) {
         "different versions of it for different tasks (the egs format is quite\n"
         "general)\n"
         "\n"
+        "Modified to allow a second, duplicate (same supervision), output or input.\n"
+        "\n"
         "Usage:  nnet3-get-egs [options] <features-rspecifier> "
         "<pdf-post-rspecifier> <egs-out>\n"
         "\n"
@@ -173,6 +183,8 @@ int main(int argc, char *argv[]) {
                                         // left/right-context, etc.
 
     std::string online_ivector_rspecifier;
+    std::string second_input_name;
+    std::string second_output_name;
 
     ParseOptions po(usage);
 
@@ -196,6 +208,10 @@ int main(int argc, char *argv[]) {
                 "Tolerance for "
                 "difference in num-frames (after subsampling) between "
                 "feature matrix and posterior");
+    po.Register("second-input", &second_input_name, "Name for "
+                "second input with same features as default input.");
+    po.Register("second-output", &second_output_name, "Name for "
+                "second output with same supervision as default output.");
     eg_config.Register(&po);
 
     po.Read(argc, argv);
@@ -262,6 +278,8 @@ int main(int argc, char *argv[]) {
         if (!ProcessFile(feats, online_ivector_feats, online_ivector_period,
                          pdf_post, key, compress, num_pdfs, 
                          targets_length_tolerance,
+                         second_input_name,
+                         second_output_name,
                          &utt_splitter, &example_writer))
           num_err++;
       }
