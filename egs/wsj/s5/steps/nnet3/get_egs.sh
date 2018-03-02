@@ -54,6 +54,8 @@ cmvn_opts=  # can be used for specifying CMVN options, if feature type is not ld
             # it doesn't make sense to use different options than were used as input to the
             # LDA transform).  This is used to turn off CMVN in the online-nnet experiments.
 generate_egs_scp=false # If true, it will generate egs.JOB.*.scp per egs archive
+second_input=
+second_output=
 
 echo "$0 $@"  # Print the command line for logging
 
@@ -258,6 +260,14 @@ fi
 egs_opts="--left-context=$left_context --right-context=$right_context --compress=$compress --num-frames=$frames_per_eg"
 [ $left_context_initial -ge 0 ] && egs_opts="$egs_opts --left-context-initial=$left_context_initial"
 [ $right_context_final -ge 0 ] && egs_opts="$egs_opts --right-context-final=$right_context_final"
+
+if [ ! -z "$second_input" ]; then
+    egs_opts="$egs_opts --second-input=$second_input"
+fi
+
+if [ ! -z "$second_output" ]; then
+    egs_opts="$egs_opts --second-output=$second_output"
+fi
 
 echo $left_context > $dir/info/left_context
 echo $right_context > $dir/info/right_context
