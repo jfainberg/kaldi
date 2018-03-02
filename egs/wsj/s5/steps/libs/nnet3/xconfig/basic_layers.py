@@ -976,7 +976,11 @@ class XconfigFixedAffineLayer(XconfigLayerBase):
                 # to init.config we write an output-node with the name 'output' and
                 # with a Descriptor equal to the descriptor that's the input to this
                 # layer.  This will be used to accumulate stats to learn the LDA transform.
-                line = 'output-node name=output input={0}'.format(descriptor_final_string)
+
+                # Hack to get different output name for a different input
+                # use any suffix to lda layer.
+                output_name = "output{}".format(self.name.split('lda')[-1])
+                line = 'output-node name={0} input={1}'.format(output_name, descriptor_final_string)
                 ans.append(('init', line))
 
         # write the 'real' component to final.config

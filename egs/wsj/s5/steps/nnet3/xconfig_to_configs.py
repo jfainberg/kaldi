@@ -184,6 +184,8 @@ def write_config_files(config_dir, all_layers):
     for layer in all_layers:
         try:
             pairs = layer.get_full_config()
+            # print("pairs!")
+            # print(pairs)
             for config_basename, line in pairs:
                 config_basename_to_lines[config_basename].append(line)
         except Exception as e:
@@ -205,6 +207,8 @@ def write_config_files(config_dir, all_layers):
         # check the lines num start with 'output-node':
         num_output_node_lines = sum( [ 1 if line.startswith('output-node' ) else 0
                                        for line in lines ] )
+        print("basename: {}".format(basename))
+        print("Num output node lines: {}".format(num_output_node_lines))
         if num_output_node_lines == 0:
             if basename == 'init':
                 continue # do not write the init.config
@@ -257,13 +261,20 @@ def add_nnet_context_info(config_dir, nnet_edits=None,
             continue
         info[parts[0].strip()] = int(parts[1].strip())
 
-    # Writing the 'vars' file:
-    #   model_left_context=0
-    #   model_right_context=7
-    vf = open('{0}/vars'.format(config_dir), 'w')
-    vf.write('model_left_context={0}\n'.format(info['left-context']))
-    vf.write('model_right_context={0}\n'.format(info['right-context']))
-    vf.close()
+    # This doesn't work with multiple inputs
+    # nnet3-info no longer provides this information
+
+    try:
+        # Writing the 'vars' file:
+        #   model_left_context=0
+        #   model_right_context=7
+        vf = open('{0}/vars'.format(config_dir), 'w')
+        vf.write('model_left_context={0}\n'.format(info['left-context']))
+        vf.write('model_right_context={0}\n'.format(info['right-context']))
+        vf.close()
+    except:
+        print("WARNING: Couldn't get left-context and right-context from nnet3-info")
+        print("Create vars file with this info yourself!")
 
 def check_model_contexts(config_dir, nnet_edits=None, existing_model=None):
     contexts = {}
