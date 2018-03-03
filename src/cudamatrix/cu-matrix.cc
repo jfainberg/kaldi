@@ -1849,11 +1849,12 @@ void CuMatrixBase<Real>::FindRowMaxId(CuArray<int32> *id) const {
 }
 
 template<typename Real>
-void CuMatrixBase<Real>::FindRowMaxId(CuVector<Real> *id) const {
+void CuMatrixBase<Real>::FindRowMaxId(CuVectorBase<Real> *id) const {
 #if HAVE_CUDA == 1
   if (CuDevice::Instantiate().Enabled()) {
     CuTimer tim;
-    id->Resize(num_rows_);
+    KALDI_ASSERT(id->Dim() > 0); // can't resize since we want this to be CuVectorBase (so we can use CuSubVectors)
+    /* id->Resize(num_rows_); */
     MatrixDim d = Dim();
 
     // CUDA thread layout: one thread block per matrix-row.
@@ -1868,7 +1869,8 @@ void CuMatrixBase<Real>::FindRowMaxId(CuVector<Real> *id) const {
 #endif
   {
     // allocate index buffer
-    id->Resize(num_rows_);
+    /* id->Resize(num_rows_); */
+    KALDI_ASSERT(id->Dim() > 0);
     id->Set(-1);
     // find maxima
     MatrixIndexT num_rows = num_rows_, num_cols = num_cols_;

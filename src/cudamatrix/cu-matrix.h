@@ -410,7 +410,7 @@ class CuMatrixBase {
   /// Find the id of the maximal element for each row (resizes the 'id'
   /// array to the appropriate size).
   void FindRowMaxId(CuArray<int32> *id) const;
-  void FindRowMaxId(CuVector<Real> *id) const;
+  void FindRowMaxId(CuVectorBase<Real> *id) const;
 
   /// Math operations, some calling kernels
   void SetZero();
