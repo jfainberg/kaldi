@@ -874,6 +874,40 @@ inline void cuda_equal_element_mask(dim3 Gr, dim3 Bl, const float *mat1,
   cudaF_equal_element_mask(Gr, Bl, mat1, mat2, mask, mat1_dim, mat2_stride,
                            mask_stride);
 }
+inline void cuda_unequal_element_mask(dim3 Gr, dim3 Bl, const double *mat1,
+                                    const double *mat2, double *mask,
+                                    MatrixDim mat1_dim, int mat2_stride,
+                                    int mask_stride) {
+  cudaD_unequal_element_mask(Gr, Bl, mat1, mat2, mask, mat1_dim, mat2_stride,
+                           mask_stride);
+}
+inline void cuda_unequal_element_mask(dim3 Gr, dim3 Bl, const float *mat1,
+                                    const float *mat2, float *mask,
+                                    MatrixDim mat1_dim, int mat2_stride,
+                                    int mask_stride) {
+  cudaF_unequal_element_mask(Gr, Bl, mat1, mat2, mask, mat1_dim, mat2_stride,
+                           mask_stride);
+}
+inline void cuda_equal_element_mask(dim3 Gr, dim3 Bl, const int32_cuda *mat1,
+                                    const int32_cuda *mat2, float *mask,
+                                    MatrixDim mat1_dim, int mat2_stride,
+                                    int mask_stride) {
+  cudaA_equal_element_mask(Gr, Bl, mat1, mat2, mask, mat1_dim, mat2_stride,
+                           mask_stride);
+}
+/* inline void cuda_copy_rows_from_vec(dim3 Gr, dim3 Bl, double *mat_out, */
+/*                                     MatrixDim d_out, const double *v_in) { */
+/*   cudaD_copy_rows_from_vec(Gr, Bl, mat_out, d_out, v_in); */
+inline void cuda_find_row_max_id(dim3 Gr, dim3 Bl, const float *mat,
+                                 float *vec_val, float *v_in,
+                                 MatrixDim d) {
+  cudaVF_find_row_max_id(Gr, Bl, mat, vec_val, v_in, d);
+}
+inline void cuda_find_row_max_id(dim3 Gr, dim3 Bl, const double *mat,
+                                 double *vec_val, double *v_in,
+                                 MatrixDim d) {
+  cudaVD_find_row_max_id(Gr, Bl, mat, vec_val, v_in, d);
+}
 inline void cuda_find_row_max_id(dim3 Gr, dim3 Bl, const double *mat,
                                  double *vec_val, int32_cuda *vec_id,
                                  MatrixDim d) {

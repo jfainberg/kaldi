@@ -108,4 +108,33 @@ void CuArrayBase<int32>::Add(const int32 &value) {
   }
 }
 
+/* void CuArrayBase<int32>::EqualElementMask(const CuArrayBase<int32> &mat, CuMatrix<T> *mask) const { */
+/*   // Check the inputs: */
+/*   KALDI_ASSERT(mat.Dim() == dim_); */
+/*   KALDI_ASSERT(mask != NULL); */
+/*   // Resizes the output matrix: */
+/*   mask->Resize(dim_, 1, kSetZero); */
+
+/* #if HAVE_CUDA == 1 */
+/*   if (CuDevice::Instantiate().Enabled()) { */
+/*     CuTimer tim; */
+/*     dim3 dimGrid, dimBlock; */
+/*     // CU1DBLOCK typedefed to 256 for vector operations */
+/*     GetBlockSizesForSimpleMatrixOperation(dim_, 1, */
+/*                                           &dimGrid, &dimBlock); */
+/*     cuda_equal_element_mask(dimGrid, dimBlock, data_, mat.Data(), */
+/*                             mask->Data(), dim_, mat.Stride(), */
+/*                             mask->Stride()); */
+/*     CU_SAFE_CALL(cudaGetLastError()); */
+
+/*     CuDevice::Instantiate().AccuProfile(__func__, tim); */
+/*   } else */
+/* #endif */
+/*   { */
+/*     for (int32 r = 0; r < dim_; r++) { */
+/*       (*mask)(r,0) = ((*this)(r) ==  mat(r) ? 1.0 : 0.0); */
+/*     } */
+/*   } */
+/* } */
+
 }  // namespace kaldi

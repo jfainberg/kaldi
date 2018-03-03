@@ -102,6 +102,11 @@ class CuArrayBase {
   /// Asserts the vector is non-empty, otherwise crashes.
   T Max() const;
 
+  /* /// Version of EqualElementMask from cu-matrix.h */
+  /* // Creates binary mask with per-element equality predicates of *this, mat. */
+  /* // Output stored to 'mask', values : 1.0 = equal, 0.0 = not-equal. */
+  /* void EqualElementMask(const CuArrayBase<int32> &mat, CuMatrix<T> *mask) const; */
+
  protected:
   /// Default constructor: make it protected so the user cannot
   /// instantiate this class.

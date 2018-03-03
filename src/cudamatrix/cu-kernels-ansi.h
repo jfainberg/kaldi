@@ -466,6 +466,22 @@ void cudaF_equal_element_mask(dim3 Gr, dim3 Bl, const float *mat1,
                               const float *mat2, float *mask,
                               MatrixDim mat1_dim, int mat2_stride,
                               int mask_stride);
+void cudaD_unequal_element_mask(dim3 Gr, dim3 Bl, const double *mat1,
+                              const double *mat2, double *mask,
+                              MatrixDim mat1_dim, int mat2_stride,
+                              int mask_stride);
+void cudaF_unequal_element_mask(dim3 Gr, dim3 Bl, const float *mat1,
+                              const float *mat2, float *mask,
+                              MatrixDim mat1_dim, int mat2_stride,
+                              int mask_stride);
+void cudaA_equal_element_mask(dim3 Gr, dim3 Bl, const int32_cuda *mat1,
+                              const int32_cuda *mat2, float *mask,
+                              MatrixDim mat1_dim, int mat2_stride,
+                              int mask_stride);
+void cudaVF_find_row_max_id(dim3 Gr, dim3 Bl, const float *mat, float *vec_val,
+                           float *v_in, MatrixDim d);
+void cudaVD_find_row_max_id(dim3 Gr, dim3 Bl, const double *mat, double *vec_val,
+                           double *v_in, MatrixDim d);
 void cudaD_find_row_max_id(dim3 Gr, dim3 Bl, const double *mat, double *vec_val,
                            int32_cuda *vec_id, MatrixDim d);
 void cudaF_find_row_max_id(dim3 Gr, dim3 Bl, const float *mat, float *vec_val,

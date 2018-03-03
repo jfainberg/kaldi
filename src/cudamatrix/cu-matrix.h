@@ -410,6 +410,7 @@ class CuMatrixBase {
   /// Find the id of the maximal element for each row (resizes the 'id'
   /// array to the appropriate size).
   void FindRowMaxId(CuArray<int32> *id) const;
+  void FindRowMaxId(CuVector<Real> *id) const;
 
   /// Math operations, some calling kernels
   void SetZero();
@@ -660,6 +661,10 @@ class CuMatrixBase {
   // Creates binary mask with per-element equality predicates of *this, mat.
   // Output stored to 'mask', values : 1.0 = equal, 0.0 = not-equal.
   void EqualElementMask(const CuMatrixBase<Real> &mat, CuMatrix<Real> *mask) const;
+
+  // Creates binary mask with per-element inequality predicates of *this, mat.
+  // Output stored to 'mask', values : 0.0 = equal, 1.0 = not-equal.
+  void UnequalElementMask(const CuMatrixBase<Real> &mat, CuMatrix<Real> *mask) const;
 
 
   /// Get raw row pointer (const).  Warning: may return a pointer to GPU memory.  Use at

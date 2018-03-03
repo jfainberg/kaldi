@@ -1849,6 +1849,45 @@ void CuMatrixBase<Real>::FindRowMaxId(CuArray<int32> *id) const {
 }
 
 template<typename Real>
+void CuMatrixBase<Real>::FindRowMaxId(CuVector<Real> *id) const {
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    CuTimer tim;
+    id->Resize(num_rows_);
+    MatrixDim d = Dim();
+
+    // CUDA thread layout: one thread block per matrix-row.
+    dim3 dimBlock(CU1DBLOCK);
+    dim3 dimGrid(num_rows_);
+    cuda_find_row_max_id(dimGrid, dimBlock, data_, NULL, id->Data(), d);
+    CU_SAFE_CALL(cudaGetLastError());
+
+    // now we have the indices!
+    CuDevice::Instantiate().AccuProfile(__func__, tim);
+  } else
+#endif
+  {
+    // allocate index buffer
+    id->Resize(num_rows_);
+    id->Set(-1);
+    // find maxima
+    MatrixIndexT num_rows = num_rows_, num_cols = num_cols_;
+    for (MatrixIndexT r = 0; r < num_rows; r++) {
+      Real max = -1e21;
+      int32 max_id = -1;
+      const Real *row_data = Mat().RowData(r);
+      for (MatrixIndexT c = 0; c < num_cols; c++) {
+        if (max < row_data[c]) {
+          max = row_data[c];
+          max_id = c;
+        }
+      }
+      id->Data()[r] = max_id;
+    }
+  }
+}
+
+template<typename Real>
 void CuMatrixBase<Real>::DiffSoftmaxPerRow(const CuMatrixBase<Real> &value,
                                            const CuMatrixBase<Real> &diff) {
 
@@ -3356,6 +3395,37 @@ void CuMatrixBase<Real>::EqualElementMask(const CuMatrixBase<Real> &mat, CuMatri
   }
 }
 
+
+template<typename Real>
+void CuMatrixBase<Real>::UnequalElementMask(const CuMatrixBase<Real> &mat, CuMatrix<Real> *mask) const {
+  // Check the inputs:
+  KALDI_ASSERT(mat.NumRows() == NumRows() && mat.NumCols() == NumCols());
+  KALDI_ASSERT(mask != NULL);
+  // Resizes the output matrix:
+  mask->Resize(NumRows(), NumCols(), kSetZero);
+
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    CuTimer tim;
+    dim3 dimGrid, dimBlock;
+    GetBlockSizesForSimpleMatrixOperation(NumRows(), NumCols(),
+                                          &dimGrid, &dimBlock);
+    cuda_unequal_element_mask(dimGrid, dimBlock, this->data_, mat.Data(),
+                            mask->Data(), this->Dim(), mat.Stride(),
+                            mask->Stride());
+    CU_SAFE_CALL(cudaGetLastError());
+
+    CuDevice::Instantiate().AccuProfile(__func__, tim);
+  } else
+#endif
+  {
+    for (int32 r = 0; r < NumRows(); r++) {
+      for (int32 c = 0; c < NumCols(); c++) {
+        (*mask)(r,c) = ((*this)(r,c) ==  mat(r,c) ? 1.0 : 0.0);
+      }
+    }
+  }
+}
 
 /**
  * Print the matrix to stream

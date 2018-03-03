@@ -1407,6 +1407,34 @@ static void _equal_element_mask(const Real *mat1, const Real *mat2, Real *mask,
     mask[index_mask] = (mat1[index_mat1] == mat2[index_mat2] ? 1.0 : 0.0);
 }
 
+template<typename Real>
+__global__
+static void _unequal_element_mask(const Real *mat1, const Real *mat2, Real *mask,
+                                MatrixDim mat1_dim, int mat2_stride,
+                                int mask_stride) {
+  int32_cuda i = blockIdx.x * blockDim.x + threadIdx.x; // col
+  int32_cuda j = blockIdx.y * blockDim.y + threadIdx.y; // row
+  int32_cuda index_mat1 = i + j * mat1_dim.stride;
+  int32_cuda index_mat2 = i + j * mat2_stride;
+  int32_cuda index_mask = i + j * mask_stride;
+  if (i < mat1_dim.cols && j < mat1_dim.rows)
+    mask[index_mask] = (mat1[index_mat1] == mat2[index_mat2] ? 0.0 : 1.0);
+}
+
+template<typename Real>
+__global__
+static void _equal_element_mask_array(const int32_cuda *mat1, const int32_cuda *mat2, Real *mask,
+                                MatrixDim mat1_dim, int mat2_stride,
+                                int mask_stride) {
+  int32_cuda i = blockIdx.x * blockDim.x + threadIdx.x; // col
+  int32_cuda j = blockIdx.y * blockDim.y + threadIdx.y; // row
+  int32_cuda index_mat1 = i + j * mat1_dim.stride;
+  int32_cuda index_mat2 = i + j * mat2_stride;
+  int32_cuda index_mask = i + j * mask_stride;
+  if (i < mat1_dim.cols && j < mat1_dim.rows)
+    mask[index_mask] = (mat1[index_mat1] == mat2[index_mat2] ? 1.0 : 0.0);
+}
+
 enum EnumTransformReduce {
   SUMAB, SUM, MAX, MIN, LINFNORM, L2NORM, L1NORM, L0NORM, LPNORM
 };
@@ -2954,6 +2982,66 @@ static void _find_row_max_id(const Real* mat, Real* vec_val, int32_cuda* vec_id,
   }
 }
 
+// Version with CuVector instead of CuArray
+template<typename Real>
+__global__
+static void _find_row_max_id_vec(const Real* mat, Real* vec_val, Real* v_in,
+                             MatrixDim d) {
+  const int32_cuda i = blockIdx.x;
+  const int32_cuda base = i * d.stride;
+  const int32_cuda tid = threadIdx.x;
+
+  __shared__ Real smax[CU1DBLOCK];
+  __shared__ int32_cuda sidx[CU1DBLOCK];
+
+  Real tmax = -1e20;
+  int32_cuda tidx = -1;
+
+  // Loop over blocks for coalesced memory access.
+  for (int32_cuda j = tid; j < d.cols; j += CU1DBLOCK) {
+    const Real val = mat[base + j];
+    if (val > tmax) {
+      tmax = val;
+      tidx = j;
+    }
+  }
+
+  smax[tid] = tmax;
+  sidx[tid] = tidx;
+
+  // Parallel reduce
+#pragma unroll
+  for (int32_cuda num_working_threads = CU1DBLOCK / 2;
+      num_working_threads >= warpSize; num_working_threads >>= 1) {
+    __syncthreads();
+    if (tid < num_working_threads) {
+      if (smax[tid + num_working_threads] > smax[tid]) {
+        smax[tid] = smax[tid + num_working_threads];
+        sidx[tid] = sidx[tid + num_working_threads];
+      }
+    }
+  }
+  // Warp reduce without __syncthreads()
+  // (note.: synchronizes implicitly within a warp at the multiprocessor)
+  if (tid < warpSize / 2) {
+#pragma unroll
+    for (int32_cuda num_working_threads = warpSize / 2; num_working_threads > 0;
+        num_working_threads >>= 1) {
+      if (smax[tid + num_working_threads] > smax[tid]) {
+        smax[tid] = smax[tid + num_working_threads];
+        sidx[tid] = sidx[tid + num_working_threads];
+      }
+    }
+  }
+
+  if (tid == 0) {
+    if (vec_val) {
+      vec_val[i] = smax[0];
+    }
+    v_in[i] = sidx[0];
+  }
+}
+
 template<typename Real>
 __global__
 static void _diff_xent(const int32_cuda* vec_tgt, Real* mat_net_out,
@@ -4366,6 +4454,23 @@ void cudaF_equal_element_mask(dim3 Gr, dim3 Bl, const float *mat1,
       mask_stride);
 }
 
+void cudaF_unequal_element_mask(dim3 Gr, dim3 Bl, const float *mat1,
+                              const float *mat2, float *mask,
+                              MatrixDim mat1_dim, int mat2_stride,
+                              int mask_stride) {
+  _unequal_element_mask<<<Gr,Bl>>>(mat1, mat2, mask, mat1_dim, mat2_stride,
+      mask_stride);
+}
+
+void cudaA_equal_element_mask(dim3 Gr, dim3 Bl, const int32_cuda *mat1,
+                              const int32_cuda *mat2, float *mask,
+                              MatrixDim mat1_dim, int mat2_stride,
+                              int mask_stride) {
+  _equal_element_mask_array<<<Gr,Bl>>>(mat1, mat2, mask, mat1_dim, mat2_stride,
+      mask_stride); // A call from host code to device code
+    // Gr = NumRows() and Bl = NumCols() in this invocation
+}
+
 /*
  * "double"
  */
@@ -4982,6 +5087,16 @@ void cudaD_regularize_l1(dim3 Gr, dim3 Bl, double* wei, double* grad, double l1,
   _regularize_l1<<<Gr,Bl>>>(wei,grad,l1,lr,d,stride_grad);
 }
 
+void cudaVD_find_row_max_id(dim3 Gr, dim3 Bl, const double* mat, double* vec_val,
+                           double* v_in, MatrixDim d) {
+  _find_row_max_id_vec<<<Gr,Bl>>>(mat, vec_val, v_in, d);
+}
+
+void cudaVF_find_row_max_id(dim3 Gr, dim3 Bl, const float* mat, float* vec_val,
+                           float* v_in, MatrixDim d) {
+  _find_row_max_id_vec<<<Gr,Bl>>>(mat, vec_val, v_in, d);
+}
+
 void cudaD_find_row_max_id(dim3 Gr, dim3 Bl, const double* mat, double* vec_val,
                            int32_cuda* vec_id, MatrixDim d) {
   _find_row_max_id<<<Gr,Bl>>>(mat, vec_val, vec_id, d);
@@ -5037,6 +5152,13 @@ void cudaD_equal_element_mask(dim3 Gr, dim3 Bl, const double *mat1,
       mask_stride);
 }
 
+void cudaD_unequal_element_mask(dim3 Gr, dim3 Bl, const double *mat1,
+                              const double *mat2, double *mask,
+                              MatrixDim mat1_dim, int mat2_stride,
+                              int mask_stride) {
+  _unequal_element_mask<<<Gr,Bl>>>(mat1, mat2, mask, mat1_dim, mat2_stride,
+      mask_stride);
+}
 // Some conversion kernels for which it's more convenient
 // to not name them F or D.
 
