@@ -32,6 +32,7 @@ namespace nnet3 {
 
 struct NnetTrainerOptions {
   bool zero_component_stats;
+  bool decouple;
   bool store_component_stats;
   int32 print_interval;
   bool debug_computation;
@@ -49,6 +50,7 @@ struct NnetTrainerOptions {
   CachingOptimizingCompilerOptions compiler_config;
   NnetTrainerOptions():
       zero_component_stats(true),
+      decouple(false),
       store_component_stats(true),
       print_interval(100),
       debug_computation(false),
@@ -60,6 +62,9 @@ struct NnetTrainerOptions {
       binary_write_cache(true),
       max_param_change(2.0) { }
   void Register(OptionsItf *opts) {
+    opts->Register("decouple", &decouple,
+                   "If true, will only train on outputs which the two outputs disagree on; "
+                   "assumes two outputs.");
     opts->Register("store-component-stats", &store_component_stats,
                    "If true, store activations and derivatives for nonlinear "
                    "components during training.");

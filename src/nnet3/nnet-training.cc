@@ -195,6 +195,15 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
   // In backstitch training, the output-name with the "_backstitch" suffix is
   // the one computed after the first, backward step of backstitch.
   const std::string suffix = (is_backstitch_step2 ? "_backstitch" : "");
+
+  if (config_.decouple) {
+    // If training with decoupling then we will have a second output output_b
+    int32 node_index = nnet_->GetNodeIndex("output");
+    int32 node_index_b = nnet_->GetNodeIndex("output_b");
+    KALDI_ASSERT(node_index >= 0);
+    KALDI_ASSERT(node_index_b >= 0);
+  }
+
   std::vector<NnetIo>::const_iterator iter = eg.io.begin(),
       end = eg.io.end();
   for (; iter != end; ++iter) {
@@ -209,40 +218,15 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
     /* KALDI_LOG << "output: " << computer->GetOutput(io.name); */
     /* KALDI_LOG << "output_b: " << computer->GetOutput("output_b"); */
     KALDI_ASSERT(node_index >= 0);
-    // a test for second output - will it run? - though only run once (simultaneously with the other output)
-    // not expected at this time in computation... somewhere we must compile based on them? <- dependent upon egs
-    /* if (nnet_->IsOutputNode(node_index) && nnet_->IsOutputNode(node_index_b)) { */
-    /*   KALDI_LOG << "Here!!"; */
-    /*   ObjectiveType obj_type = nnet_->GetNode(node_index_b).u.objective_type; */
-    /*   BaseFloat tot_weight, tot_objf; */
-    /*   bool supply_deriv = true; */
-    /*   ComputeObjectiveFunction(io.features, obj_type, "output_b", */
-    /*                            supply_deriv, computer, */
-    /*                            &tot_weight, &tot_objf); */
-    /*   objf_info_["output_b" + suffix].UpdateStats("output_b" + suffix, */
-    /*                                   config_.print_interval, */
-    /*                                   num_minibatches_processed_, */
-    /*                                   tot_weight, tot_objf); */
-    /* } */
 
     // PSEUDOCODE - move it someplace useful later
     std::string output_name = "output";
     std::string output_name_b = "output_b";
-    /* KALDI_LOG << "Getting outputs"; */
     const CuMatrixBase<BaseFloat> &output = computer->GetOutput(output_name);
     const CuMatrixBase<BaseFloat> &output_b = computer->GetOutput(output_name_b);
 
-    /* KALDI_LOG << "Iniiating max id vectors"; */
-    /* CuVector<BaseFloat> max_ids(output.NumRows()); */
-    /* CuVector<BaseFloat> max_ids_b(output_b.NumRows()); */
-
-    /* KALDI_LOG << "Finding row max ids"; */
     // This uses a custom version of FindRowMaxId that takes CuVectors instead of CuArrays
     // We need CuVectors later for EqualElementMask
-    // Actually would be nice to have this function take 1-dim CuMatrix for EqualElementMask
-    // Can create CuSubVector from a CuMatrix so we won't have to copy later on
-    /* output.FindRowMaxId(&max_ids); */
-    /* output_b.FindRowMaxId(&max_ids_b); */
 
     CuMatrix<BaseFloat> max_ids_mat(1, output.NumRows(), kUndefined); 
     CuMatrix<BaseFloat> max_ids_mat_b(1, output.NumRows(), kUndefined);
@@ -251,68 +235,21 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
     CuSubVector<BaseFloat> max_ids = max_ids_mat.Row(0);
     CuSubVector<BaseFloat> max_ids_b = max_ids_mat_b.Row(0);
 
+    // Perform argmax for each example (by row)
     output.FindRowMaxId(&max_ids);
     output_b.FindRowMaxId(&max_ids_b);
 
-    // Two options:
-    // a) Expand max_ids to matrices and get matrix mask to apply later
-    // b) Use SubVectors / 1-dim matrices for masks, and use AddDiagVecMat later - probably more efficient
-    // Look at CopyRows/ColsFromVec
-    // Try both and check that they are the same - nice sanity check
-   
-    // a)
-    // Either make FindRowMaxId operate on a vector, or
-    // make equalelementmask operate on arrays
-
-    /* KALDI_LOG << "Creating 1-dim Matrices"; */
-    /* CuMatrix<BaseFloat> max_ids_mat_col(max_ids.Dim(), 1, kUndefined); */ 
-
-    /* KALDI_LOG << "Copying vectors to matrices"; */
-    /* max_ids_mat.CopyColFromVec(max_ids, 0); */
-    /* max_ids_mat_col.CopyColFromVec(max_ids, 0); */
-    /* max_ids_mat.CopyRowsFromVec(max_ids); */
-    /* max_ids_mat_b.CopyRowsFromVec(max_ids_b); */
-
-    /* KALDI_LOG << max_ids_mat; */
-
-    /* KALDI_LOG << "Computing equal element mask"; */
-    /* max_ids_mat.EqualElementMask(max_ids_mat_b, &mask_tmp); */ 
-    /* KALDI_LOG << mask_tmp; */
-
-    /* // might have to cast max_ids arrays as CuSubMatrix, then */
-    // Don't need to set size for mask -> but maybe be explicit?
-    /* CuMatrix<BaseFloat> mask_tmp(output.NumRows(), 1, kUndefined); */
-    /* max_ids.EqualElementMask(&max_ids_b, &mask_tmp); */ 
-
-    /* // get 1-mask since we want 0s where they agree */
-    /* CuMatrix<BaseFloat> mask(output.NumRows(), 1, kUndefined); */
-    /* mask.Set(1.0); */
-    /* mask.AddMat(-1.0, mask_tmp, kNoTrans); */
-
     // Uses custom version of EqualElementMask that returns 1 for unequal items
-    // so we can save on additional copying and computation
+    // Saves more computation
     CuMatrix<BaseFloat> unequal_mask(1, output.NumRows(), kUndefined);
     max_ids_mat.UnequalElementMask(max_ids_mat_b, &unequal_mask); 
-
     CuSubVector<BaseFloat> mask = unequal_mask.Row(0); // Doesn't copy
 
-    /* KALDI_LOG << "matrix mask: " << unequal_mask; */
-    /* KALDI_LOG << "subvector mask: " << mask; */
-
-    // apply mask to output_deriv (CuMatrix)
-    // MulRows?
-    // Get CuSubVector from matrix by matrix.Row(0)
-    // AddDiagVecMat
 
     CuMatrix<BaseFloat> test_output_deriv(output.NumRows(), 5, kUndefined);
     test_output_deriv.SetRandn();
     CuMatrix<BaseFloat> new_output_deriv(output.NumRows(), 5, kSetZero);
     new_output_deriv.AddDiagVecMat(1.0, mask, test_output_deriv, kNoTrans, 0.0);
-
-    /* KALDI_LOG << "test_output_deriv: " << test_output_deriv; */
-    /* KALDI_LOG << "new_output_deriv: " << new_output_deriv; */
-    /* KALDI_ASSERT(1 == 0); */
-
 
     // PSEUDOCODE END
 
