@@ -326,6 +326,9 @@ bool NnetTrainer::PrintTotalStats() const {
     ans = ans || ok;
   }
   PrintMaxChangeStats();
+  if (config_.decouple) {
+    decouple_info_.PrintTotalStats();
+  }
   return ans;
 }
 
@@ -402,19 +405,37 @@ void DecoupleInfo::UpdateStats(
                            phase);
     current_phase = phase;
     minibatches_this_phase = 0;
+    tot_num_unequal_this_phase = 0;
   }
   minibatches_this_phase++;
+  tot_num_unequal_this_phase += this_num_unequal;
+  tot_num_unequal += this_num_unequal;
+  minibatches++;
 }
 
 void DecoupleInfo::PrintStatsForThisPhase(
     int32 minibatches_per_phase,
     int32 phase) const {
+  int32 start_minibatch = current_phase * minibatches_per_phase,
+      end_minibatch = phase * minibatches_per_phase - 1;
 
   if (minibatches_per_phase == minibatches_this_phase) {
-    KALDI_LOG << "Latest number of unequal / disagreeing examples is "
-              << latest_num_unequal << " from a minibatch of "
-              << latest_minibatch_size << " examples.";
+    BaseFloat average_num_unequal = tot_num_unequal_this_phase / (minibatches_this_phase);
+    KALDI_LOG << "Average number of unequal / disagreeing frames " 
+              << "for minibatches " << start_minibatch
+              << '-' << end_minibatch << " (" << minibatches_this_phase << ") is "
+              << average_num_unequal << " (latest number is " << latest_num_unequal 
+              << " from a minibatch of " << latest_minibatch_size << " frames.)";
   }
+}
+
+void DecoupleInfo::PrintTotalStats() const {
+  BaseFloat avg_unequal = tot_num_unequal / minibatches;
+  KALDI_LOG << "Overall average number of unequal / disagreeing frames is "
+            << avg_unequal << " over " << minibatches << " minibatches.";
+  KALDI_LOG << "[this line is to be parsed by a script:] "
+            << "num-unequal-per-minibatch="
+            << avg_unequal;
 }
 
 

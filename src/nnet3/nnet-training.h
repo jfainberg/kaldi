@@ -127,14 +127,20 @@ struct DecoupleInfo {
   int32 minibatches_this_phase; // The number of minibatches' worth of stats that
                                 // we accumulated in the phase numbered
                                 // 'current_phase'.
+  int32 minibatches; // Overall number of minibatches
   int32 latest_num_unequal; // Number of disagreeing examples with two outputs (decouple)
   int32 latest_minibatch_size;
+  int32 tot_num_unequal_this_phase; // Total number of disagreeing examples in a phase
+  int32 tot_num_unequal; // Total number of disagreeing examples overall
 
   DecoupleInfo():
     current_phase(0),
     minibatches_this_phase(0),
+    minibatches(0),
     latest_num_unequal(0),
-    latest_minibatch_size(0) { }
+    latest_minibatch_size(0),
+    tot_num_unequal_this_phase(0),
+    tot_num_unequal(0) { }
 
   // Sets number of unequal output examples for last minibatch
   void UpdateStats(int32 minibatches_per_phase,
@@ -144,6 +150,9 @@ struct DecoupleInfo {
 
   void PrintStatsForThisPhase(int32 minibatches_per_phase,
                               int32 phase) const;
+
+  // Prints total stats at end of iteration
+  void PrintTotalStats() const;
 };
 
 // This struct is used in multiple nnet training classes for keeping
