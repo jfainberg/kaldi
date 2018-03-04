@@ -197,41 +197,28 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
   const std::string suffix = (is_backstitch_step2 ? "_backstitch" : "");
 
   if (config_.decouple) {
+    // TODO: UpdateStats with percentage or number of removed frames
     // If training with decoupling then we will have a second output output_b
-    int32 node_index = nnet_->GetNodeIndex("output");
-    int32 node_index_b = nnet_->GetNodeIndex("output_b");
-    KALDI_ASSERT(node_index >= 0);
-    KALDI_ASSERT(node_index_b >= 0);
-  }
-
-  std::vector<NnetIo>::const_iterator iter = eg.io.begin(),
-      end = eg.io.end();
-  for (; iter != end; ++iter) {
-    const NnetIo &io = *iter;
-    // loops across all potential input and output nodes (hence check for outputNode below)
-    /* KALDI_LOG << "In ProcessOutputs, processing io.name: " << io.name; // DEBUG */
-    int32 node_index = nnet_->GetNodeIndex(io.name);
-    /* int32 node_index_b = nnet_->GetNodeIndex("output_b"); */
-    /* int32 node_index_a = nnet_->GetNodeIndex("output"); */
-    /* KALDI_LOG << "node indices for io.name "<<io.name<<": " << node_index << " and for output: " <<node_index_a<<"and for output_b" << node_index_b; // DEBUG */
-    /* KALDI_ASSERT(nnet_->IsOutputNode(node_index_b) == true); // DEBUG */
-    /* KALDI_LOG << "output: " << computer->GetOutput(io.name); */
-    /* KALDI_LOG << "output_b: " << computer->GetOutput("output_b"); */
-    KALDI_ASSERT(node_index >= 0);
-
-    // PSEUDOCODE - move it someplace useful later
     std::string output_name = "output";
     std::string output_name_b = "output_b";
+
+    int32 node_index = nnet_->GetNodeIndex(output_name);
+    int32 node_index_b = nnet_->GetNodeIndex(output_name_b);
+    KALDI_ASSERT(node_index >= 0);
+    KALDI_ASSERT(node_index_b >= 0);
+
+    // We precompute outputs from each and compute a mask
+    // and then pass both to a special ComputeObjectiveFunction 
+    // to avoid calling GetOutput twice
     const CuMatrixBase<BaseFloat> &output = computer->GetOutput(output_name);
     const CuMatrixBase<BaseFloat> &output_b = computer->GetOutput(output_name_b);
 
     // This uses a custom version of FindRowMaxId that takes CuVectors instead of CuArrays
     // We need CuVectors later for EqualElementMask
-
+    // We extract SubVectors so that we don't have to copy Vectors into max_ids_mat later on
     CuMatrix<BaseFloat> max_ids_mat(1, output.NumRows(), kUndefined); 
     CuMatrix<BaseFloat> max_ids_mat_b(1, output.NumRows(), kUndefined);
 
-    // We extract SubVectors so that we don't have to copy Vectors into max_ids_mat later on
     CuSubVector<BaseFloat> max_ids = max_ids_mat.Row(0);
     CuSubVector<BaseFloat> max_ids_b = max_ids_mat_b.Row(0);
 
@@ -244,28 +231,78 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
     CuMatrix<BaseFloat> unequal_mask(1, output.NumRows(), kUndefined);
     max_ids_mat.UnequalElementMask(max_ids_mat_b, &unequal_mask); 
     CuSubVector<BaseFloat> mask = unequal_mask.Row(0); // Doesn't copy
+    int32 total_unequal = mask.Sum();
+    int32 batchsize = mask.Dim();
+    decouple_info_.UpdateStats(config_.print_interval,
+                               num_minibatches_processed_,
+                               total_unequal, batchsize);
 
+    // Call special ComputeObjectiveFunction here for both outputs with mask
+    std::vector<NnetIo>::const_iterator iter = eg.io.begin(),
+        end = eg.io.end();
+    for (; iter != end; ++iter) {
+      const NnetIo &io = *iter;
+      int32 node_index = nnet_->GetNodeIndex(io.name);
+      KALDI_ASSERT(node_index >= 0);
+      if (nnet_->IsOutputNode(node_index)) {
+        // either "output" or "output_b"
+        KALDI_ASSERT(io.name == "output" || io.name == "output_b");
 
-    CuMatrix<BaseFloat> test_output_deriv(output.NumRows(), 5, kUndefined);
-    test_output_deriv.SetRandn();
-    CuMatrix<BaseFloat> new_output_deriv(output.NumRows(), 5, kSetZero);
-    new_output_deriv.AddDiagVecMat(1.0, mask, test_output_deriv, kNoTrans, 0.0);
+        ObjectiveType obj_type = nnet_->GetNode(node_index).u.objective_type;
+        BaseFloat tot_weight, tot_objf;
+        bool supply_deriv = true;
+        if (io.name == "output")
+          ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
+                                         output, mask,
+                                         supply_deriv, computer,
+                                         &tot_weight, &tot_objf);
+        else if (io.name == "output_b")
+          ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
+                                         output_b, mask,
+                                         supply_deriv, computer,
+                                         &tot_weight, &tot_objf);
+
+        objf_info_[io.name + suffix].UpdateStats(io.name + suffix,
+                                        config_.print_interval,
+                                        num_minibatches_processed_,
+                                        tot_weight, tot_objf);
+      }
+    }
+
+    /* CuMatrix<BaseFloat> test_output_deriv(output.NumRows(), 5, kUndefined); */
+    /* test_output_deriv.SetRandn(); */
+    /* CuMatrix<BaseFloat> new_output_deriv(output.NumRows(), 5, kSetZero); */
+    /* new_output_deriv.AddDiagVecMat(1.0, mask, test_output_deriv, kNoTrans, 0.0); */
+
+    
+    // UpdateStats
 
     // PSEUDOCODE END
+  } else { // Normal operation
+    std::vector<NnetIo>::const_iterator iter = eg.io.begin(),
+        end = eg.io.end();
+    for (; iter != end; ++iter) {
+      const NnetIo &io = *iter;
+      // loops across all potential input and output nodes (hence check for outputNode below)
+      //
+      int32 node_index = nnet_->GetNodeIndex(io.name);
+      KALDI_ASSERT(node_index >= 0);
 
-    if (nnet_->IsOutputNode(node_index)) {
-      /* KALDI_LOG << "Computing for io.name " << io.name; */
-      ObjectiveType obj_type = nnet_->GetNode(node_index).u.objective_type;
-      BaseFloat tot_weight, tot_objf;
-      bool supply_deriv = true;
-      ComputeObjectiveFunction(io.features, obj_type, io.name,
-                               supply_deriv, computer,
-                               &tot_weight, &tot_objf);
-      // KALDI_LOG << "tot_weight: " << tot_weight;
-      objf_info_[io.name + suffix].UpdateStats(io.name + suffix,
-                                      config_.print_interval,
-                                      num_minibatches_processed_,
-                                      tot_weight, tot_objf);
+      if (nnet_->IsOutputNode(node_index)) {
+
+        /* KALDI_LOG << "Computing for io.name " << io.name; */
+        ObjectiveType obj_type = nnet_->GetNode(node_index).u.objective_type;
+        BaseFloat tot_weight, tot_objf;
+        bool supply_deriv = true;
+        ComputeObjectiveFunction(io.features, obj_type, io.name,
+                                 supply_deriv, computer,
+                                 &tot_weight, &tot_objf);
+        // KALDI_LOG << "tot_weight: " << tot_weight;
+        objf_info_[io.name + suffix].UpdateStats(io.name + suffix,
+                                        config_.print_interval,
+                                        num_minibatches_processed_,
+                                        tot_weight, tot_objf);
+      }
     }
   }
 }
@@ -349,6 +386,37 @@ void ObjectiveFunctionInfo::UpdateStats(
   tot_objf += this_minibatch_tot_objf;
   tot_aux_objf += this_minibatch_tot_aux_objf;
 }
+
+void DecoupleInfo::UpdateStats(
+    int32 minibatches_per_phase,
+    int32 minibatch_counter,
+    int32 this_num_unequal,
+    int32 this_minibatch_size) {
+  latest_num_unequal = this_num_unequal;
+  latest_minibatch_size = this_minibatch_size;
+
+  int32 phase = minibatch_counter / minibatches_per_phase;
+  if (phase != current_phase) {
+    KALDI_ASSERT(phase > current_phase);
+    PrintStatsForThisPhase(minibatches_per_phase,
+                           phase);
+    current_phase = phase;
+    minibatches_this_phase = 0;
+  }
+  minibatches_this_phase++;
+}
+
+void DecoupleInfo::PrintStatsForThisPhase(
+    int32 minibatches_per_phase,
+    int32 phase) const {
+
+  if (minibatches_per_phase == minibatches_this_phase) {
+    KALDI_LOG << "Latest number of unequal / disagreeing examples is "
+              << latest_num_unequal << " from a minibatch of "
+              << latest_minibatch_size << " examples.";
+  }
+}
+
 
 void ObjectiveFunctionInfo::PrintStatsForThisPhase(
     const std::string &output_name,
@@ -499,7 +567,86 @@ void ComputeObjectiveFunction(const GeneralMatrix &supervision,
   }
 }
 
+void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
+                                    ObjectiveType objective_type,
+                                    const std::string &output_name,
+                                    const CuMatrixBase<BaseFloat> &output,
+                                    const CuSubVector<BaseFloat> &mask,
+                                    bool supply_deriv,
+                                    NnetComputer *computer,
+                                    BaseFloat *tot_weight,
+                                    BaseFloat *tot_objf) {
+  /* const CuMatrixBase<BaseFloat> &output = computer->GetOutput(output_name); */
 
+  if (output.NumCols() != supervision.NumCols())
+    KALDI_ERR << "Nnet versus example output dimension (num-classes) "
+              << "mismatch for '" << output_name << "': " << output.NumCols()
+              << " (nnet) vs. " << supervision.NumCols() << " (egs)\n";
+
+  switch (objective_type) {
+    case kLinear: {
+      // objective is x * y.
+      switch (supervision.Type()) {
+        case kSparseMatrix: {
+          const SparseMatrix<BaseFloat> &post = supervision.GetSparseMatrix();
+          CuSparseMatrix<BaseFloat> cu_post(post);
+          // The cross-entropy objective is computed by a simple dot product,
+          // because after the LogSoftmaxLayer, the output is already in the form
+          // of log-likelihoods that are normalized to sum to one.
+          *tot_weight = cu_post.Sum();
+          // KALDI_LOG << "tot_weight in Compute: " << *tot_weight;
+          // KALDI_LOG << "tot_weight in Compute numrows: " << cu_post.NumRows() << " numcols: " << cu_post.NumCols();
+          *tot_objf = TraceMatSmat(output, cu_post, kTrans);
+          if (supply_deriv) {
+            CuMatrix<BaseFloat> output_deriv(output.NumRows(), output.NumCols(),
+                                             kUndefined);
+            cu_post.CopyToMat(&output_deriv);
+            computer->AcceptInput(output_name, &output_deriv);
+          }
+          break;
+        }
+        case kFullMatrix: {
+          // there is a redundant matrix copy in here if we're not using a GPU
+          // but we don't anticipate this code branch being used in many cases.
+          CuMatrix<BaseFloat> cu_post(supervision.GetFullMatrix());
+          *tot_weight = cu_post.Sum();
+          *tot_objf = TraceMatMat(output, cu_post, kTrans);
+          if (supply_deriv)
+            computer->AcceptInput(output_name, &cu_post);
+          break;
+        }
+        case kCompressedMatrix: {
+          Matrix<BaseFloat> post;
+          supervision.GetMatrix(&post);
+          CuMatrix<BaseFloat> cu_post;
+          cu_post.Swap(&post);
+          *tot_weight = cu_post.Sum();
+          *tot_objf = TraceMatMat(output, cu_post, kTrans);
+          if (supply_deriv)
+            computer->AcceptInput(output_name, &cu_post);
+          break;
+        }
+      }
+      break;
+    }
+    case kQuadratic: {
+      // objective is -0.5 (x - y)^2
+      CuMatrix<BaseFloat> diff(supervision.NumRows(),
+                               supervision.NumCols(),
+                               kUndefined);
+      diff.CopyFromGeneralMat(supervision);
+      diff.AddMat(-1.0, output);
+      *tot_weight = diff.NumRows();
+      *tot_objf = -0.5 * TraceMatMat(diff, diff, kTrans);
+      if (supply_deriv)
+        computer->AcceptInput(output_name, &diff);
+      break;
+    }
+    default:
+      KALDI_ERR << "Objective function type " << objective_type
+                << " not handled.";
+  }
+}
 
 } // namespace nnet3
 } // namespace kaldi

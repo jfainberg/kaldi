@@ -121,6 +121,31 @@ struct NnetTrainerOptions {
   }
 };
 
+// This struct is used to keep track of decoupling experiment info.
+struct DecoupleInfo {
+  int32 current_phase;
+  int32 minibatches_this_phase; // The number of minibatches' worth of stats that
+                                // we accumulated in the phase numbered
+                                // 'current_phase'.
+  int32 latest_num_unequal; // Number of disagreeing examples with two outputs (decouple)
+  int32 latest_minibatch_size;
+
+  DecoupleInfo():
+    current_phase(0),
+    minibatches_this_phase(0),
+    latest_num_unequal(0),
+    latest_minibatch_size(0) { }
+
+  // Sets number of unequal output examples for last minibatch
+  void UpdateStats(int32 minibatches_per_phase,
+                   int32 minibatch_counter,
+                   int32 this_num_unequal,
+                   int32 this_minibatch_size);
+
+  void PrintStatsForThisPhase(int32 minibatches_per_phase,
+                              int32 phase) const;
+};
+
 // This struct is used in multiple nnet training classes for keeping
 // track of objective function values.
 // Also see struct AccuracyInfo, in nnet-diagnostics.h.
@@ -234,6 +259,9 @@ class NnetTrainer {
   // consistent dropout masks.  It's set to a value derived from rand()
   // when the class is initialized.
   int32 srand_seed_;
+
+  // Stats for decouple experiments
+  DecoupleInfo decouple_info_;
 };
 
 /**
@@ -278,6 +306,16 @@ void ComputeObjectiveFunction(const GeneralMatrix &supervision,
                               BaseFloat *tot_weight,
                               BaseFloat *tot_objf);
 
+// Like above but takes precomputed output and a mask for derivatives
+void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
+                                    ObjectiveType objective_type,
+                                    const std::string &output_name,
+                                    const CuMatrixBase<BaseFloat> &output,
+                                    const CuSubVector<BaseFloat> &mask,
+                                    bool supply_deriv,
+                                    NnetComputer *computer,
+                                    BaseFloat *tot_weight,
+                                    BaseFloat *tot_objf);
 
 
 } // namespace nnet3
