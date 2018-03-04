@@ -272,7 +272,12 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
     /* CuMatrix<BaseFloat> test_output_deriv(output.NumRows(), 5, kUndefined); */
     /* test_output_deriv.SetRandn(); */
     /* CuMatrix<BaseFloat> new_output_deriv(output.NumRows(), 5, kSetZero); */
-    /* new_output_deriv.AddDiagVecMat(1.0, mask, test_output_deriv, kNoTrans, 0.0); */
+
+    /* KALDI_LOG << test_output_deriv; */
+    /* test_output_deriv.AddDiagVecMat(1.0, mask, test_output_deriv, kNoTrans, 0.0); */
+    /* KALDI_LOG << test_output_deriv; */
+
+    /* KALDI_ASSERT(1==0); */
 
     
     // UpdateStats
@@ -599,6 +604,11 @@ void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
                                     BaseFloat *tot_objf) {
   /* const CuMatrixBase<BaseFloat> &output = computer->GetOutput(output_name); */
 
+    /* CuMatrix<BaseFloat> test_output_deriv(output.NumRows(), 5, kUndefined); */
+    /* test_output_deriv.SetRandn(); */
+    /* CuMatrix<BaseFloat> new_output_deriv(output.NumRows(), 5, kSetZero); */
+    /* new_output_deriv.AddDiagVecMat(1.0, mask, test_output_deriv, kNoTrans, 0.0); */
+
   if (output.NumCols() != supervision.NumCols())
     KALDI_ERR << "Nnet versus example output dimension (num-classes) "
               << "mismatch for '" << output_name << "': " << output.NumCols()
@@ -611,22 +621,35 @@ void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
         case kSparseMatrix: {
           const SparseMatrix<BaseFloat> &post = supervision.GetSparseMatrix();
           CuSparseMatrix<BaseFloat> cu_post(post);
+
+          // We get a full CuMatrix earlier becase we need to apply the mask
+          // before computing tot_weight and tot_objf.
+          // It's called output_deriv, but is the same as cu_post in the linear case
+          CuMatrix<BaseFloat> output_deriv(output.NumRows(), output.NumCols(), kUndefined);
+          cu_post.CopyToMat(&output_deriv);
+
+          // Apply mask: Could be improved by a new version of AddDiagVecMat where Mat is itself (avoid copying)
+          CuMatrix<BaseFloat> new_output_deriv(output.NumRows(), output.NumCols(), kSetZero);
+          // Does *new_output_deriv = 0.0 * *new_output_deriv + 1.0 * diag(mask) * output_deriv [or output_deriv^T]
+          // is it safe to make output_deriv = new_output_deriv since we multiply by 0?
+          new_output_deriv.AddDiagVecMat(1.0, mask, output_deriv, kNoTrans, 0.0);
+
           // The cross-entropy objective is computed by a simple dot product,
           // because after the LogSoftmaxLayer, the output is already in the form
           // of log-likelihoods that are normalized to sum to one.
-          *tot_weight = cu_post.Sum();
-          // KALDI_LOG << "tot_weight in Compute: " << *tot_weight;
-          // KALDI_LOG << "tot_weight in Compute numrows: " << cu_post.NumRows() << " numcols: " << cu_post.NumCols();
-          *tot_objf = TraceMatSmat(output, cu_post, kTrans);
+          *tot_weight = new_output_deriv.Sum();
+          *tot_objf = TraceMatMat(output, new_output_deriv, kTrans);
           if (supply_deriv) {
-            CuMatrix<BaseFloat> output_deriv(output.NumRows(), output.NumCols(),
-                                             kUndefined);
-            cu_post.CopyToMat(&output_deriv);
-            computer->AcceptInput(output_name, &output_deriv);
+            /* CuMatrix<BaseFloat> output_deriv(output.NumRows(), output.NumCols(), */
+            /*                                  kUndefined); */
+            /* cu_post.CopyToMat(&output_deriv); */
+
+            computer->AcceptInput(output_name, &new_output_deriv);
           }
           break;
         }
         case kFullMatrix: {
+          KALDI_ERR << "Not implemented Decoupling with kFullMatrix";
           // there is a redundant matrix copy in here if we're not using a GPU
           // but we don't anticipate this code branch being used in many cases.
           CuMatrix<BaseFloat> cu_post(supervision.GetFullMatrix());
@@ -637,6 +660,7 @@ void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
           break;
         }
         case kCompressedMatrix: {
+          KALDI_ERR << "Not implemented Decoupling with kCompressedMatrix";
           Matrix<BaseFloat> post;
           supervision.GetMatrix(&post);
           CuMatrix<BaseFloat> cu_post;
