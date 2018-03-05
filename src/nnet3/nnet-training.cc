@@ -411,11 +411,15 @@ void DecoupleInfo::UpdateStats(
     current_phase = phase;
     minibatches_this_phase = 0;
     tot_num_unequal_this_phase = 0;
+    tot_sparse_minibatches_this_phase = 0;
   }
   minibatches_this_phase++;
   tot_num_unequal_this_phase += this_num_unequal;
   tot_num_unequal += this_num_unequal;
   minibatches++;
+
+  if ((latest_num_unequal / latest_minibatch_size) < 0.10)
+      tot_sparse_minibatches_this_phase += 1;
 }
 
 void DecoupleInfo::PrintStatsForThisPhase(
@@ -431,6 +435,10 @@ void DecoupleInfo::PrintStatsForThisPhase(
               << '-' << end_minibatch << " (" << minibatches_this_phase << ") is "
               << average_num_unequal << " (latest number is " << latest_num_unequal 
               << " from a minibatch of " << latest_minibatch_size << " frames.)";
+    if (tot_sparse_minibatches_this_phase > 0) {
+        KALDI_WARN << tot_sparse_minibatches_this_phase << " minibatches had less than "
+                   << "10% frames after filtering agreeing frames.";
+    }
   }
 }
 

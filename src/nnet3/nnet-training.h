@@ -132,6 +132,7 @@ struct DecoupleInfo {
   int32 latest_minibatch_size;
   int32 tot_num_unequal_this_phase; // Total number of disagreeing examples in a phase
   int32 tot_num_unequal; // Total number of disagreeing examples overall
+  int32 tot_sparse_minibatches_this_phase; // Total number of minibatches with less than 10% remaining frames
 
   DecoupleInfo():
     current_phase(0),
@@ -140,7 +141,8 @@ struct DecoupleInfo {
     latest_num_unequal(0),
     latest_minibatch_size(0),
     tot_num_unequal_this_phase(0),
-    tot_num_unequal(0) { }
+    tot_num_unequal(0),
+    tot_sparse_minibatches_this_phase(0) { }
 
   // Sets number of unequal output examples for last minibatch
   void UpdateStats(int32 minibatches_per_phase,
