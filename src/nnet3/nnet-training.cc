@@ -42,9 +42,10 @@ NnetTrainer::NnetTrainer(const NnetTrainerOptions &config,
   num_max_change_per_component_applied_.resize(num_updatable, 0);
   num_max_change_global_applied_ = 0;
 
-  if (config_.dropout_model)
+  if (config_.dropout_model) {
     KALDI_ASSERT(config_.decouple == false); // decouple and dropout not supported concurrently
     KALDI_LOG << "### Will drop one of two models for each even/odd minibatch. ###";
+  }
 
   if (config_.read_cache != "") {
     bool binary;
