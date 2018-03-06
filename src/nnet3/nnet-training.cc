@@ -488,7 +488,7 @@ void DecoupleInfo::UpdateStats(
   tot_num_unequal += this_num_unequal;
   minibatches++;
 
-  if ((latest_num_unequal / latest_minibatch_size) < 0.10)
+  if ((static_cast<BaseFloat>(latest_num_unequal) / static_cast<BaseFloat>(latest_minibatch_size)) < 0.10)
       tot_sparse_minibatches_this_phase += 1;
 }
 
