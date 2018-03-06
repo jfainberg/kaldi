@@ -42,6 +42,10 @@ NnetTrainer::NnetTrainer(const NnetTrainerOptions &config,
   num_max_change_per_component_applied_.resize(num_updatable, 0);
   num_max_change_global_applied_ = 0;
 
+  if (config_.dropout_model)
+    KALDI_ASSERT(config_.decouple == false); // decouple and dropout not supported concurrently
+    KALDI_LOG << "### Will drop one of two models for each even/odd minibatch. ###";
+
   if (config_.read_cache != "") {
     bool binary;
     Input ki;
@@ -237,6 +241,11 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
                                num_minibatches_processed_,
                                total_unequal, batchsize);
 
+    /* if ((total_unequal / batchsize) < 0.10) { */
+    /*     // Need to find previous learning rate and store it */
+    /*     SetLearningRate(1.0, nnet_); */
+    /* } */
+
     // Call special ComputeObjectiveFunction here for both outputs with mask
     std::vector<NnetIo>::const_iterator iter = eg.io.begin(),
         end = eg.io.end();
@@ -278,18 +287,79 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
     /* KALDI_LOG << test_output_deriv; */
 
     /* KALDI_ASSERT(1==0); */
-
+  } else if (config_.dropout_model) {
+    // Drop one model (odd and even) by zeroing supervision / derivatives
+    std::string output_name = "output";
+    std::string output_name_b = "output_b";
     
-    // UpdateStats
+    std::string skip_model;
+    if (num_minibatches_processed_ % 2 == 0)
+      skip_model = output_name;
+    else
+      skip_model = output_name_b;
 
-    // PSEUDOCODE END
-  } else { // Normal operation
+    int32 node_index = nnet_->GetNodeIndex(output_name);
+    int32 node_index_b = nnet_->GetNodeIndex(output_name_b);
+    KALDI_ASSERT(node_index >= 0);
+    KALDI_ASSERT(node_index_b >= 0);
+
+    const CuMatrixBase<BaseFloat> &output = computer->GetOutput(output_name);
+    const CuMatrixBase<BaseFloat> &output_b = computer->GetOutput(output_name_b);
+
+    // create 0 mask for skip_model, 1 mask for non-skip model
+    CuVector<BaseFloat> mask_zeros(output.NumRows(), kSetZero);
+    CuVector<BaseFloat> mask_ones(output.NumRows(), kSetZero);
+    mask_ones.Set(1.0);
+
+    CuVector<BaseFloat> *mask;
+
+    // loop over nnet ios and call ComputeObjectiveFunctionMasked on both as above
+    // with dedicated masks
     std::vector<NnetIo>::const_iterator iter = eg.io.begin(),
         end = eg.io.end();
     for (; iter != end; ++iter) {
       const NnetIo &io = *iter;
+      int32 node_index = nnet_->GetNodeIndex(io.name);
+      KALDI_ASSERT(node_index >= 0);
+      if (nnet_->IsOutputNode(node_index)) {
+        // either "output" or "output_b"
+        KALDI_ASSERT(io.name == "output" || io.name == "output_b");
+
+	if (io.name == skip_model)
+    	  mask = &mask_zeros;
+	else
+          mask = &mask_ones;
+
+        ObjectiveType obj_type = nnet_->GetNode(node_index).u.objective_type;
+        BaseFloat tot_weight, tot_objf;
+        bool supply_deriv = true;
+        if (io.name == "output")
+          ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
+                                         output, *mask,
+                                         supply_deriv, computer,
+                                         &tot_weight, &tot_objf);
+        else if (io.name == "output_b")
+          ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
+                                         output_b, *mask,
+                                         supply_deriv, computer,
+                                         &tot_weight, &tot_objf);
+
+        objf_info_[io.name + suffix].UpdateStats(io.name + suffix,
+                                        config_.print_interval,
+                                        num_minibatches_processed_,
+                                        tot_weight, tot_objf);
+      }
+    }
+    
+  } else { // Normal operation
+    std::vector<NnetIo>::const_iterator iter = eg.io.begin(),
+        end = eg.io.end();
+
+    for (; iter != end; ++iter) {
+      const NnetIo &io = *iter;
       // loops across all potential input and output nodes (hence check for outputNode below)
       //
+
       int32 node_index = nnet_->GetNodeIndex(io.name);
       KALDI_ASSERT(node_index >= 0);
 
@@ -499,6 +569,7 @@ bool ObjectiveFunctionInfo::PrintTotalStats(const std::string &name) const {
   BaseFloat objf = (tot_objf / tot_weight),
         aux_objf = (tot_aux_objf / tot_weight),
         sum_objf = objf + aux_objf;
+
   if (tot_aux_objf == 0.0) {
     KALDI_LOG << "Overall average objective function for '" << name << "' is "
               << (tot_objf / tot_weight) << " over " << tot_weight << " frames.";
@@ -605,7 +676,7 @@ void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
                                     ObjectiveType objective_type,
                                     const std::string &output_name,
                                     const CuMatrixBase<BaseFloat> &output,
-                                    const CuSubVector<BaseFloat> &mask,
+                                    const CuVector<BaseFloat> &mask,
                                     bool supply_deriv,
                                     NnetComputer *computer,
                                     BaseFloat *tot_weight,
@@ -641,7 +712,7 @@ void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
           // Does *new_output_deriv = 0.0 * *new_output_deriv + 1.0 * diag(mask) * output_deriv [or output_deriv^T]
           // is it safe to make output_deriv = new_output_deriv since we multiply by 0?
           new_output_deriv.AddDiagVecMat(1.0, mask, output_deriv, kNoTrans, 0.0);
-
+ 	  
           // The cross-entropy objective is computed by a simple dot product,
           // because after the LogSoftmaxLayer, the output is already in the form
           // of log-likelihoods that are normalized to sum to one.

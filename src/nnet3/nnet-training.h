@@ -33,6 +33,7 @@ namespace nnet3 {
 struct NnetTrainerOptions {
   bool zero_component_stats;
   bool decouple;
+  bool dropout_model;
   bool store_component_stats;
   int32 print_interval;
   bool debug_computation;
@@ -51,6 +52,7 @@ struct NnetTrainerOptions {
   NnetTrainerOptions():
       zero_component_stats(true),
       decouple(false),
+      dropout_model(false),
       store_component_stats(true),
       print_interval(100),
       debug_computation(false),
@@ -64,6 +66,9 @@ struct NnetTrainerOptions {
   void Register(OptionsItf *opts) {
     opts->Register("decouple", &decouple,
                    "If true, will only train on outputs which the two outputs disagree on; "
+                   "assumes two outputs.");
+    opts->Register("dropout-model", &dropout_model,
+                   "Will update only a single model for a minibatch (even and odd); "
                    "assumes two outputs.");
     opts->Register("store-component-stats", &store_component_stats,
                    "If true, store activations and derivatives for nonlinear "
@@ -322,7 +327,7 @@ void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
                                     ObjectiveType objective_type,
                                     const std::string &output_name,
                                     const CuMatrixBase<BaseFloat> &output,
-                                    const CuSubVector<BaseFloat> &mask,
+                                    const CuVector<BaseFloat> &mask,
                                     bool supply_deriv,
                                     NnetComputer *computer,
                                     BaseFloat *tot_weight,
