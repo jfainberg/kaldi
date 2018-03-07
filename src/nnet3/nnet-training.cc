@@ -44,7 +44,14 @@ NnetTrainer::NnetTrainer(const NnetTrainerOptions &config,
 
   if (config_.dropout_model) {
     KALDI_ASSERT(config_.decouple == false); // decouple and dropout not supported concurrently
+    KALDI_ASSERT(config_.skip_correct == false); // 
     KALDI_LOG << "### Will drop one of two models for each even/odd minibatch. ###";
+  }
+
+  if (config_.skip_correct) {
+    KALDI_ASSERT(config_.decouple == false); // decouple and dropout not supported concurrently
+    KALDI_ASSERT(config_.dropout_model == false); // 
+    KALDI_LOG << "### Will drop frames with correct prediction by model. ###";
   }
 
   if (config_.read_cache != "") {
@@ -326,10 +333,10 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
         // either "output" or "output_b"
         KALDI_ASSERT(io.name == "output" || io.name == "output_b");
 
-	if (io.name == skip_model)
-    	  mask = &mask_zeros;
-	else
-          mask = &mask_ones;
+        if (io.name == skip_model)
+              mask = &mask_zeros;
+        else
+              mask = &mask_ones;
 
         ObjectiveType obj_type = nnet_->GetNode(node_index).u.objective_type;
         BaseFloat tot_weight, tot_objf;
@@ -352,6 +359,58 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
       }
     }
     
+  } else if (config_.skip_correct) {
+    // Assumes a single output, comparing against supervision instead of second output
+    std::vector<NnetIo>::const_iterator iter = eg.io.begin(),
+        end = eg.io.end();
+
+    for (; iter != end; ++iter) {
+      const NnetIo &io = *iter;
+      int32 node_index = nnet_->GetNodeIndex(io.name);
+      KALDI_ASSERT(node_index >= 0);
+
+      if (nnet_->IsOutputNode(node_index)) {
+        const CuMatrixBase<BaseFloat> &output = computer->GetOutput(io.name);
+
+        // Get supervision
+        const GeneralMatrix &supervision = io.features;
+        CuMatrix<BaseFloat> post(output.NumRows(), output.NumCols(), kUndefined);
+        post.CopyFromGeneralMat(supervision);
+
+        // Get argmax
+        CuMatrix<BaseFloat> max_ids_mat(1, output.NumRows(), kUndefined); 
+        CuMatrix<BaseFloat> post_max_ids_mat(1, output.NumRows(), kUndefined); 
+        CuSubVector<BaseFloat> max_ids = max_ids_mat.Row(0);
+        CuSubVector<BaseFloat> post_max_ids = post_max_ids_mat.Row(0);
+
+        // Perform argmax for each example (by row)
+        output.FindRowMaxId(&max_ids);
+        post.FindRowMaxId(&post_max_ids);
+
+        // Compare output to supervision and generate mask
+        CuMatrix<BaseFloat> unequal_mask(1, output.NumRows(), kUndefined);
+        max_ids_mat.UnequalElementMask(post_max_ids_mat, &unequal_mask);
+        CuSubVector<BaseFloat> mask = unequal_mask.Row(0); // Doesn't copy
+        int32 total_unequal = mask.Sum();
+        int32 batchsize = mask.Dim();
+
+        decouple_info_.UpdateStats(config_.print_interval,
+                                   num_minibatches_processed_,
+                                   total_unequal, batchsize);
+
+        ObjectiveType obj_type = nnet_->GetNode(node_index).u.objective_type;
+        BaseFloat tot_weight, tot_objf;
+        bool supply_deriv = true;
+        ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
+                                 output, mask, 
+                                 supply_deriv, computer,
+                                 &tot_weight, &tot_objf);
+        objf_info_[io.name + suffix].UpdateStats(io.name + suffix,
+                                        config_.print_interval,
+                                        num_minibatches_processed_,
+                                        tot_weight, tot_objf);
+      }
+    }
   } else { // Normal operation
     std::vector<NnetIo>::const_iterator iter = eg.io.begin(),
         end = eg.io.end();
@@ -402,7 +461,7 @@ bool NnetTrainer::PrintTotalStats() const {
     ans = ans || ok;
   }
   PrintMaxChangeStats();
-  if (config_.decouple) {
+  if (config_.decouple || config_.skip_correct) {
     decouple_info_.PrintTotalStats();
   }
   return ans;

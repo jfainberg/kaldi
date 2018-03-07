@@ -34,6 +34,7 @@ struct NnetTrainerOptions {
   bool zero_component_stats;
   bool decouple;
   bool dropout_model;
+  bool skip_correct;
   bool store_component_stats;
   int32 print_interval;
   bool debug_computation;
@@ -53,6 +54,7 @@ struct NnetTrainerOptions {
       zero_component_stats(true),
       decouple(false),
       dropout_model(false),
+      skip_correct(false),
       store_component_stats(true),
       print_interval(100),
       debug_computation(false),
@@ -70,6 +72,8 @@ struct NnetTrainerOptions {
     opts->Register("dropout-model", &dropout_model,
                    "Will update only a single model for a minibatch (even and odd); "
                    "assumes two outputs.");
+    opts->Register("skip-correct", &skip_correct,
+                   "Will update only on fraems for which the model doesn't predict correctly.");
     opts->Register("store-component-stats", &store_component_stats,
                    "If true, store activations and derivatives for nonlinear "
                    "components during training.");
