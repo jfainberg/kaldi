@@ -295,6 +295,95 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
     /* KALDI_LOG << test_output_deriv; */
 
     /* KALDI_ASSERT(1==0); */
+  } else if (config_.decouple_super) {
+    // If training with decoupling then we will have a second output output_b
+    std::string output_name = "output";
+    std::string output_name_b = "output_b";
+
+    int32 node_index = nnet_->GetNodeIndex(output_name);
+    int32 node_index_b = nnet_->GetNodeIndex(output_name_b);
+    KALDI_ASSERT(node_index >= 0);
+    KALDI_ASSERT(node_index_b >= 0);
+
+    // We precompute outputs from each and compute a mask
+    // and then pass both to a special ComputeObjectiveFunction 
+    // to avoid calling GetOutput twice
+    const CuMatrixBase<BaseFloat> &output = computer->GetOutput(output_name);
+    const CuMatrixBase<BaseFloat> &output_b = computer->GetOutput(output_name_b);
+
+    // This uses a custom version of FindRowMaxId that takes CuVectors instead of CuArrays
+    // We need CuVectors later for EqualElementMask
+    // We extract SubVectors so that we don't have to copy Vectors into max_ids_mat later on
+    CuMatrix<BaseFloat> max_ids_mat(1, output.NumRows(), kUndefined); 
+    CuMatrix<BaseFloat> max_ids_mat_b(1, output.NumRows(), kUndefined);
+
+    CuSubVector<BaseFloat> max_ids = max_ids_mat.Row(0);
+    CuSubVector<BaseFloat> max_ids_b = max_ids_mat_b.Row(0);
+
+    // Perform argmax for each example (by row)
+    output.FindRowMaxId(&max_ids);
+    output_b.FindRowMaxId(&max_ids_b);
+
+    // Uses custom version of EqualElementMask that returns 1 for unequal items
+    // Saves more computation
+    CuMatrix<BaseFloat> unequal_mask(1, output.NumRows(), kUndefined);
+    max_ids_mat.UnequalElementMask(max_ids_mat_b, &unequal_mask); 
+    CuSubVector<BaseFloat> mask = unequal_mask.Row(0); // Doesn't copy
+
+    // Call special ComputeObjectiveFunction here for both outputs with mask
+    std::vector<NnetIo>::const_iterator iter = eg.io.begin(),
+        end = eg.io.end();
+    for (; iter != end; ++iter) {
+      const NnetIo &io = *iter;
+      int32 node_index = nnet_->GetNodeIndex(io.name);
+      KALDI_ASSERT(node_index >= 0);
+      if (nnet_->IsOutputNode(node_index)) {
+        // either "output" or "output_b"
+        KALDI_ASSERT(io.name == "output" || io.name == "output_b");
+
+        // Get supervision
+        const GeneralMatrix &supervision = io.features;
+        CuMatrix<BaseFloat> post(output.NumRows(), output.NumCols(), kUndefined);
+        post.CopyFromGeneralMat(supervision);
+        // Get argmax
+        CuMatrix<BaseFloat> post_max_ids_mat(1, output.NumRows(), kUndefined);
+        CuSubVector<BaseFloat> post_max_ids = post_max_ids_mat.Row(0);
+        post.FindRowMaxId(&post_max_ids);
+
+        CuMatrix<BaseFloat> equal_mask(1, output.NumRows(), kUndefined);
+        // does (A == B == C) -> want to train on these
+        max_ids_mat.EqualEqualMask(max_ids_mat_b, post_max_ids_mat, &equal_mask);
+        CuSubVector<BaseFloat> equal_mask_vector = equal_mask.Row(0);
+
+        mask.AddVec(1.0, &equal_mask_vector); // Add in those other samples we want to train on
+
+        int32 total_unequal = mask.Sum();
+        int32 batchsize = mask.Dim();
+
+        decouple_info_.UpdateStats(config_.print_interval,
+                                   num_minibatches_processed_,
+                                   total_unequal, batchsize);
+
+        ObjectiveType obj_type = nnet_->GetNode(node_index).u.objective_type;
+        BaseFloat tot_weight, tot_objf;
+        bool supply_deriv = true;
+        if (io.name == "output")
+          ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
+                                         output, mask,
+                                         supply_deriv, computer,
+                                         &tot_weight, &tot_objf);
+        else if (io.name == "output_b")
+          ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
+                                         output_b, mask,
+                                         supply_deriv, computer,
+                                         &tot_weight, &tot_objf);
+
+        objf_info_[io.name + suffix].UpdateStats(io.name + suffix,
+                                        config_.print_interval,
+                                        num_minibatches_processed_,
+                                        tot_weight, tot_objf);
+      }
+    }
   } else if (config_.dropout_model) {
     // Drop one model (odd and even) by zeroing supervision / derivatives
     std::string output_name = "output";

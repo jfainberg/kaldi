@@ -3429,6 +3429,37 @@ void CuMatrixBase<Real>::UnequalElementMask(const CuMatrixBase<Real> &mat, CuMat
   }
 }
 
+
+template<typename Real>
+void CuMatrixBase<Real>::EqualEqualElementMask(const CuMatrixBase<Real> &mat, const CuMatrixBase<Real> &mat2, CuMatrix<Real> *mask) const {
+  // Check the inputs:
+  KALDI_ASSERT(mat.NumRows() == NumRows() && mat.NumCols() == NumCols() && mat2.NumRows() == NumRows() && mat2.NumCols() == NumCols());
+  KALDI_ASSERT(mask != NULL);
+  // Resizes the output matrix:
+  mask->Resize(NumRows(), NumCols(), kSetZero);
+
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    CuTimer tim;
+    dim3 dimGrid, dimBlock;
+    GetBlockSizesForSimpleMatrixOperation(NumRows(), NumCols(),
+                                          &dimGrid, &dimBlock);
+    cuda_equalunequal_element_mask(dimGrid, dimBlock, this->data_, mat.Data(), mat2.Data(),
+                            mask->Data(), this->Dim(), mat.Stride(), mat2.Stride(),
+                            mask->Stride());
+    CU_SAFE_CALL(cudaGetLastError());
+
+    CuDevice::Instantiate().AccuProfile(__func__, tim);
+  } else
+#endif
+  {
+    for (int32 r = 0; r < NumRows(); r++) {
+      for (int32 c = 0; c < NumCols(); c++) {
+        (*mask)(r,c) = (((*this)(r,c) ==  mat(r,c)) == mat2(r,c) ? 1.0 : 0.0);
+      }
+    }
+  }
+}
 /**
  * Print the matrix to stream
  */

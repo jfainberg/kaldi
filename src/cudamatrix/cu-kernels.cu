@@ -1423,6 +1423,21 @@ static void _unequal_element_mask(const Real *mat1, const Real *mat2, Real *mask
 
 template<typename Real>
 __global__
+static void _equalequal_element_mask(const Real *mat1, const Real *mat2, const Real *mat3, Real *mask,
+                                MatrixDim mat1_dim, int mat2_stride, int mat3_stride,
+                                int mask_stride) {
+  int32_cuda i = blockIdx.x * blockDim.x + threadIdx.x; // col
+  int32_cuda j = blockIdx.y * blockDim.y + threadIdx.y; // row
+  int32_cuda index_mat1 = i + j * mat1_dim.stride;
+  int32_cuda index_mat2 = i + j * mat2_stride;
+  int32_cuda index_mat3 = i + j * mat3_stride;
+  int32_cuda index_mask = i + j * mask_stride;
+  if (i < mat1_dim.cols && j < mat1_dim.rows)
+    mask[index_mask] = ( (mat1[index_mat1] == mat2[index_mat2]) == mat3[index_mat3] ? 1.0 : 0.0);
+}
+
+template<typename Real>
+__global__
 static void _equal_element_mask_array(const int32_cuda *mat1, const int32_cuda *mat2, Real *mask,
                                 MatrixDim mat1_dim, int mat2_stride,
                                 int mask_stride) {
@@ -4462,6 +4477,14 @@ void cudaF_unequal_element_mask(dim3 Gr, dim3 Bl, const float *mat1,
       mask_stride);
 }
 
+void cudaF_equalequal_element_mask(dim3 Gr, dim3 Bl, const float *mat1,
+                              const float *mat2, const float *mat3, float *mask,
+                              MatrixDim mat1_dim, int mat2_stride, int mat3_stride,
+                              int mask_stride) {
+  _equalequal_element_mask<<<Gr,Bl>>>(mat1, mat2, mat3, mask, mat1_dim, mat2_stride, mat3_stride,
+      mask_stride);
+}
+
 void cudaA_equal_element_mask(dim3 Gr, dim3 Bl, const int32_cuda *mat1,
                               const int32_cuda *mat2, float *mask,
                               MatrixDim mat1_dim, int mat2_stride,
@@ -5157,6 +5180,14 @@ void cudaD_unequal_element_mask(dim3 Gr, dim3 Bl, const double *mat1,
                               MatrixDim mat1_dim, int mat2_stride,
                               int mask_stride) {
   _unequal_element_mask<<<Gr,Bl>>>(mat1, mat2, mask, mat1_dim, mat2_stride,
+      mask_stride);
+}
+
+void cudaD_equalequal_element_mask(dim3 Gr, dim3 Bl, const double *mat1,
+                              const double *mat2, const double *mat3, double *mask,
+                              MatrixDim mat1_dim, int mat2_stride, int mat3_stride,
+                              int mask_stride) {
+  _equalequal_element_mask<<<Gr,Bl>>>(mat1, mat2, mat3, mask, mat1_dim, mat2_stride, mat3_stride,
       mask_stride);
 }
 // Some conversion kernels for which it's more convenient

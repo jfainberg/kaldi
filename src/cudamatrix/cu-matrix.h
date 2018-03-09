@@ -666,6 +666,9 @@ class CuMatrixBase {
   // Output stored to 'mask', values : 0.0 = equal, 1.0 = not-equal.
   void UnequalElementMask(const CuMatrixBase<Real> &mat, CuMatrix<Real> *mask) const;
 
+  // Creates binary mask with per-element equality predicates of *this, mat, and mat2.
+  // Output stored to 'mask', values : 1.0 = equal, 0.0 = not-equal.
+  void EqualEqualElementMask(const CuMatrixBase<Real> &mat, const CuMatrixBase<Real> &mat2, CuMatrix<Real> *mask) const;
 
   /// Get raw row pointer (const).  Warning: may return a pointer to GPU memory.  Use at
   /// your own risk.

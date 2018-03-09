@@ -35,6 +35,7 @@ struct NnetTrainerOptions {
   bool decouple;
   bool dropout_model;
   bool skip_correct;
+  bool decouple_super;
   bool store_component_stats;
   int32 print_interval;
   bool debug_computation;
@@ -55,6 +56,7 @@ struct NnetTrainerOptions {
       decouple(false),
       dropout_model(false),
       skip_correct(false),
+      decouple_super(false),
       store_component_stats(true),
       print_interval(100),
       debug_computation(false),
@@ -68,6 +70,9 @@ struct NnetTrainerOptions {
   void Register(OptionsItf *opts) {
     opts->Register("decouple", &decouple,
                    "If true, will only train on outputs which the two outputs disagree on; "
+                   "assumes two outputs.");
+    opts->Register("decouple-super", &decouple_super,
+                   "If true, will only train on outputs which the two outputs disagree on or which all models agree on; "
                    "assumes two outputs.");
     opts->Register("dropout-model", &dropout_model,
                    "Will update only a single model for a minibatch (even and odd); "
