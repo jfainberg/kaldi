@@ -3444,7 +3444,7 @@ void CuMatrixBase<Real>::EqualEqualElementMask(const CuMatrixBase<Real> &mat, co
     dim3 dimGrid, dimBlock;
     GetBlockSizesForSimpleMatrixOperation(NumRows(), NumCols(),
                                           &dimGrid, &dimBlock);
-    cuda_equalunequal_element_mask(dimGrid, dimBlock, this->data_, mat.Data(), mat2.Data(),
+    cuda_equalequal_element_mask(dimGrid, dimBlock, this->data_, mat.Data(), mat2.Data(),
                             mask->Data(), this->Dim(), mat.Stride(), mat2.Stride(),
                             mask->Stride());
     CU_SAFE_CALL(cudaGetLastError());

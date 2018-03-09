@@ -352,10 +352,10 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
 
         CuMatrix<BaseFloat> equal_mask(1, output.NumRows(), kUndefined);
         // does (A == B == C) -> want to train on these
-        max_ids_mat.EqualEqualMask(max_ids_mat_b, post_max_ids_mat, &equal_mask);
+        max_ids_mat.EqualEqualElementMask(max_ids_mat_b, post_max_ids_mat, &equal_mask);
         CuSubVector<BaseFloat> equal_mask_vector = equal_mask.Row(0);
 
-        mask.AddVec(1.0, &equal_mask_vector); // Add in those other samples we want to train on
+        mask.AddVec(1.0, equal_mask_vector); // Add in those other samples we want to train on
 
         int32 total_unequal = mask.Sum();
         int32 batchsize = mask.Dim();

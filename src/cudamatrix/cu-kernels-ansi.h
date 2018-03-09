@@ -479,7 +479,7 @@ void cudaD_equalequal_element_mask(dim3 Gr, dim3 Bl, const double *mat1,
                               MatrixDim mat1_dim, int mat2_stride, int mat3_stride,
                               int mask_stride);
 void cudaF_equalequal_element_mask(dim3 Gr, dim3 Bl, const float *mat1,
-                              const float *mat2, const double *mat3, float *mask,
+                              const float *mat2, const float *mat3, float *mask,
                               MatrixDim mat1_dim, int mat2_stride, int mat3_stride,
                               int mask_stride);
 void cudaA_equal_element_mask(dim3 Gr, dim3 Bl, const int32_cuda *mat1,
