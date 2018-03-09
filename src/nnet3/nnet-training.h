@@ -144,9 +144,11 @@ struct DecoupleInfo {
   int32 minibatches; // Overall number of minibatches
   int32 latest_num_unequal; // Number of disagreeing examples with two outputs (decouple)
   int32 latest_minibatch_size;
+  int32 latest_num_all_agree;
   int32 tot_num_unequal_this_phase; // Total number of disagreeing examples in a phase
   int32 tot_num_unequal; // Total number of disagreeing examples overall
   int32 tot_sparse_minibatches_this_phase; // Total number of minibatches with less than 10% remaining frames
+  int32 tot_all_agree_this_phase; // Total number of examples for which both models and supervision agreed
 
   DecoupleInfo():
     current_phase(0),
@@ -154,15 +156,18 @@ struct DecoupleInfo {
     minibatches(0),
     latest_num_unequal(0),
     latest_minibatch_size(0),
+    latest_num_all_agree(0),
     tot_num_unequal_this_phase(0),
     tot_num_unequal(0),
-    tot_sparse_minibatches_this_phase(0) { }
+    tot_sparse_minibatches_this_phase(0),
+    tot_all_agree_this_phase(0) { }
 
   // Sets number of unequal output examples for last minibatch
   void UpdateStats(int32 minibatches_per_phase,
                    int32 minibatch_counter,
                    int32 this_num_unequal,
-                   int32 this_minibatch_size);
+                   int32 this_minibatch_size,
+                   int32 this_all_agree = 0);
 
   void PrintStatsForThisPhase(int32 minibatches_per_phase,
                               int32 phase) const;

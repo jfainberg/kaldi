@@ -354,29 +354,31 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
         // does (A == B == C) -> want to train on these
         max_ids_mat.EqualEqualElementMask(max_ids_mat_b, post_max_ids_mat, &equal_mask);
         CuSubVector<BaseFloat> equal_mask_vector = equal_mask.Row(0);
-
-        mask.AddVec(1.0, equal_mask_vector); // Add in those other samples we want to train on
+        int32 total_all_agree = equal_mask_vector.Sum();
 
         int32 total_unequal = mask.Sum();
         int32 batchsize = mask.Dim();
 
-        decouple_info_.UpdateStats(config_.print_interval,
-                                   num_minibatches_processed_,
-                                   total_unequal, batchsize);
+        mask.AddVec(1.0, equal_mask_vector); // Add in those other samples we want to train on
 
         ObjectiveType obj_type = nnet_->GetNode(node_index).u.objective_type;
         BaseFloat tot_weight, tot_objf;
         bool supply_deriv = true;
-        if (io.name == "output")
+        if (io.name == "output") {
           ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
                                          output, mask,
                                          supply_deriv, computer,
                                          &tot_weight, &tot_objf);
-        else if (io.name == "output_b")
+          // Just update this onse
+          decouple_info_.UpdateStats(config_.print_interval,
+                                       num_minibatches_processed_,
+                                       total_unequal, batchsize, total_all_agree);
+        } else if (io.name == "output_b") {
           ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
                                          output_b, mask,
                                          supply_deriv, computer,
                                          &tot_weight, &tot_objf);
+        }
 
         objf_info_[io.name + suffix].UpdateStats(io.name + suffix,
                                         config_.print_interval,
@@ -618,7 +620,9 @@ void DecoupleInfo::UpdateStats(
     int32 minibatches_per_phase,
     int32 minibatch_counter,
     int32 this_num_unequal,
-    int32 this_minibatch_size) {
+    int32 this_minibatch_size,
+    int32 this_all_agree) {
+  latest_num_all_agree = this_all_agree;
   latest_num_unequal = this_num_unequal;
   latest_minibatch_size = this_minibatch_size;
 
@@ -631,10 +635,12 @@ void DecoupleInfo::UpdateStats(
     minibatches_this_phase = 0;
     tot_num_unequal_this_phase = 0;
     tot_sparse_minibatches_this_phase = 0;
+    tot_all_agree_this_phase = 0;
   }
   minibatches_this_phase++;
   tot_num_unequal_this_phase += this_num_unequal;
   tot_num_unequal += this_num_unequal;
+  tot_all_agree_this_phase += this_all_agree;
   minibatches++;
 
   if ((static_cast<BaseFloat>(latest_num_unequal) / static_cast<BaseFloat>(latest_minibatch_size)) < 0.10)
@@ -649,11 +655,21 @@ void DecoupleInfo::PrintStatsForThisPhase(
 
   if (minibatches_per_phase == minibatches_this_phase) {
     BaseFloat average_num_unequal = tot_num_unequal_this_phase / (minibatches_this_phase);
-    KALDI_LOG << "Average number of unequal / disagreeing frames " 
-              << "for minibatches " << start_minibatch
-              << '-' << end_minibatch << " (" << minibatches_this_phase << ") is "
-              << average_num_unequal << " (latest number is " << latest_num_unequal 
-              << " from a minibatch of " << latest_minibatch_size << " frames.)";
+    if (latest_num_all_agree == 0) {
+        KALDI_LOG << "Average number of unequal / disagreeing frames " 
+                  << "for minibatches " << start_minibatch
+                  << '-' << end_minibatch << " (" << minibatches_this_phase << ") is "
+                  << average_num_unequal << " (latest number is " << latest_num_unequal 
+                  << " from a minibatch of " << latest_minibatch_size << " frames.)";
+    } else {
+        BaseFloat average_num_all_agree = tot_all_agree_this_phase / (minibatches_this_phase);
+        KALDI_LOG << "Average number of unequal / disagreeing frames " 
+                  << "for minibatches " << start_minibatch
+                  << '-' << end_minibatch << " (" << minibatches_this_phase << ") is "
+                  << average_num_unequal << " (+agreeing: " << average_num_all_agree 
+                  << ") (latest number is " << latest_num_unequal << " (+agreeing: " 
+                  << latest_num_all_agree << ") from a minibatch of " << latest_minibatch_size << " frames.)";
+    }
     if (tot_sparse_minibatches_this_phase > 0) {
         KALDI_WARN << tot_sparse_minibatches_this_phase << " minibatches had less than "
                    << "10% frames after filtering agreeing frames.";
