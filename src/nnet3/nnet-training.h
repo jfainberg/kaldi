@@ -33,6 +33,7 @@ namespace nnet3 {
 struct NnetTrainerOptions {
   bool zero_component_stats;
   bool decouple;
+  bool scale_deriv;
   bool dropout_model;
   bool skip_correct;
   bool decouple_super;
@@ -54,6 +55,7 @@ struct NnetTrainerOptions {
   NnetTrainerOptions():
       zero_component_stats(true),
       decouple(false),
+      scale_deriv(false),
       dropout_model(false),
       skip_correct(false),
       decouple_super(false),
@@ -71,6 +73,8 @@ struct NnetTrainerOptions {
     opts->Register("decouple", &decouple,
                    "If true, will only train on outputs which the two outputs disagree on; "
                    "assumes two outputs.");
+    opts->Register("scale-deriv", &scale_deriv,
+                   "If true, will scale derivatives with 1-(dropped/all).");
     opts->Register("decouple-super", &decouple_super,
                    "If true, will only train on outputs which the two outputs disagree on or which all models agree on; "
                    "assumes two outputs.");
@@ -345,7 +349,8 @@ void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
                                     bool supply_deriv,
                                     NnetComputer *computer,
                                     BaseFloat *tot_weight,
-                                    BaseFloat *tot_objf);
+                                    BaseFloat *tot_objf,
+                                    bool scale_deriv=false);
 
 
 } // namespace nnet3

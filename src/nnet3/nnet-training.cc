@@ -272,12 +272,12 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
           ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
                                          output, mask,
                                          supply_deriv, computer,
-                                         &tot_weight, &tot_objf);
+                                         &tot_weight, &tot_objf, config_.scale_deriv);
         else if (io.name == "output_b")
           ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
                                          output_b, mask,
                                          supply_deriv, computer,
-                                         &tot_weight, &tot_objf);
+                                         &tot_weight, &tot_objf, config_.scale_deriv);
 
         objf_info_[io.name + suffix].UpdateStats(io.name + suffix,
                                         config_.print_interval,
@@ -368,7 +368,7 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
           ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
                                          output, mask,
                                          supply_deriv, computer,
-                                         &tot_weight, &tot_objf);
+                                         &tot_weight, &tot_objf, config_.scale_deriv);
           // Just update this onse
           decouple_info_.UpdateStats(config_.print_interval,
                                        num_minibatches_processed_,
@@ -377,7 +377,7 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
           ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
                                          output_b, mask,
                                          supply_deriv, computer,
-                                         &tot_weight, &tot_objf);
+                                         &tot_weight, &tot_objf, config_.scale_deriv);
         }
 
         objf_info_[io.name + suffix].UpdateStats(io.name + suffix,
@@ -436,12 +436,12 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
           ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
                                          output, *mask,
                                          supply_deriv, computer,
-                                         &tot_weight, &tot_objf);
+                                         &tot_weight, &tot_objf, config_.scale_deriv);
         else if (io.name == "output_b")
           ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
                                          output_b, *mask,
                                          supply_deriv, computer,
-                                         &tot_weight, &tot_objf);
+                                         &tot_weight, &tot_objf, config_.scale_deriv);
 
         objf_info_[io.name + suffix].UpdateStats(io.name + suffix,
                                         config_.print_interval,
@@ -495,7 +495,7 @@ void NnetTrainer::ProcessOutputs(bool is_backstitch_step2,
         ComputeObjectiveFunctionMasked(io.features, obj_type, io.name,
                                  output, mask, 
                                  supply_deriv, computer,
-                                 &tot_weight, &tot_objf);
+                                 &tot_weight, &tot_objf, config_.scale_deriv);
         objf_info_[io.name + suffix].UpdateStats(io.name + suffix,
                                         config_.print_interval,
                                         num_minibatches_processed_,
@@ -845,7 +845,8 @@ void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
                                     bool supply_deriv,
                                     NnetComputer *computer,
                                     BaseFloat *tot_weight,
-                                    BaseFloat *tot_objf) {
+                                    BaseFloat *tot_objf,
+                                    bool scale_deriv) {
   /* const CuMatrixBase<BaseFloat> &output = computer->GetOutput(output_name); */
 
     /* CuMatrix<BaseFloat> test_output_deriv(output.NumRows(), 5, kUndefined); */
@@ -877,6 +878,13 @@ void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
           // Does *new_output_deriv = 0.0 * *new_output_deriv + 1.0 * diag(mask) * output_deriv [or output_deriv^T]
           // is it safe to make output_deriv = new_output_deriv since we multiply by 0?
           new_output_deriv.AddDiagVecMat(1.0, mask, output_deriv, kNoTrans, 0.0);
+
+          // scale learning rate
+          if (scale_deriv) {
+            BaseFloat dropped = mask.Dim() - mask.Sum();
+            BaseFloat scale = 1 - (dropped / mask.Dim());
+            new_output_deriv.Scale(scale);
+          }
  	  
           // The cross-entropy objective is computed by a simple dot product,
           // because after the LogSoftmaxLayer, the output is already in the form
@@ -919,6 +927,7 @@ void ComputeObjectiveFunctionMasked(const GeneralMatrix &supervision,
       break;
     }
     case kQuadratic: {
+      KALDI_ERR << "Not implemented Decoupling with kCompressedMatrix";
       // objective is -0.5 (x - y)^2
       CuMatrix<BaseFloat> diff(supervision.NumRows(),
                                supervision.NumCols(),
