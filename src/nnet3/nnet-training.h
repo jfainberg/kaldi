@@ -37,6 +37,7 @@ struct NnetTrainerOptions {
   bool dropout_model;
   bool skip_correct;
   bool decouple_super;
+  BaseFloat bootstrap_hard;
   bool store_component_stats;
   int32 print_interval;
   bool debug_computation;
@@ -59,6 +60,7 @@ struct NnetTrainerOptions {
       dropout_model(false),
       skip_correct(false),
       decouple_super(false),
+      bootstrap_hard(0.0),
       store_component_stats(true),
       print_interval(100),
       debug_computation(false),
@@ -78,6 +80,8 @@ struct NnetTrainerOptions {
     opts->Register("decouple-super", &decouple_super,
                    "If true, will only train on outputs which the two outputs disagree on or which all models agree on; "
                    "assumes two outputs.");
+    opts->Register("bootstrap-hard", &bootstrap_hard,
+                   "If > 0, will bootstrap supervision to prediction with beta=value.");
     opts->Register("dropout-model", &dropout_model,
                    "Will update only a single model for a minibatch (even and odd); "
                    "assumes two outputs.");
@@ -335,6 +339,16 @@ class NnetTrainer {
 void ComputeObjectiveFunction(const GeneralMatrix &supervision,
                               ObjectiveType objective_type,
                               const std::string &output_name,
+                              bool supply_deriv,
+                              NnetComputer *computer,
+                              BaseFloat *tot_weight,
+                              BaseFloat *tot_objf);
+
+// Accepts already computed output and CuMatrix as supervision
+void ComputeObjectiveFunctionOutput(const CuMatrixBase<BaseFloat> &supervision,
+                              ObjectiveType objective_type,
+                              const std::string &output_name,
+                              const CuMatrixBase<BaseFloat> &output,
                               bool supply_deriv,
                               NnetComputer *computer,
                               BaseFloat *tot_weight,
