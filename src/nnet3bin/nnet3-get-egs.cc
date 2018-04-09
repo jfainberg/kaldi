@@ -124,10 +124,7 @@ static bool ProcessFile(const GeneralMatrix &feats,
         iter->second *= chunk.output_weights[i];
     }
 
-    eg.io.push_back(NnetIo("output", num_pdfs, 0, labels));
-    if (!second_output_name.empty()) {
-      eg.io.push_back(NnetIo(second_output_name, num_pdfs, 0, labels));
-    }
+    eg.io.push_back(NnetIo("output", num_pdfs, 0, labels, frame_subsampling_factor));
 
     if (compress)
       eg.Compress();
