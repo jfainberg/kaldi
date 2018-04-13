@@ -525,7 +525,8 @@ double DiscriminativeComputation::ComputeObjfAndDeriv(Posterior *post,
         den_lat_,
         supervision_.num_ali, opts_.criterion,
         opts_.one_silence_class,
-        &tid_post);
+        &tid_post,
+        opts_.drop_frames);
     ConvertPosteriorToPdfs(tmodel_, tid_post, post);
     return ans;
   } else if (opts_.criterion == "mmi") {

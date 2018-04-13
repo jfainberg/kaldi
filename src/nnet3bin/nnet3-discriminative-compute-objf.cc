@@ -40,6 +40,7 @@ int main(int argc, char *argv[]) {
         "e.g.: nnet3-discriminative-compute-objf 0.mdl ark:valid.degs\n";
 
     bool batchnorm_test_mode = true, dropout_test_mode = true;
+    bool log_utt = false;
 
     // This program doesn't support using a GPU, because these probabilities are
     // used for diagnostics, and you can just compute them with a small enough
@@ -56,6 +57,8 @@ int main(int argc, char *argv[]) {
     po.Register("dropout-test-mode", &dropout_test_mode,
                 "If true, set test-mode to true on any DropoutComponents and "
                 "DropoutMaskComponents.");
+    po.Register("log-utt", &log_utt,
+                "If true, logs the utterance id of each example.");
 
     nnet_opts.Register(&po);
     discriminative_opts.Register(&po);
@@ -95,8 +98,11 @@ int main(int argc, char *argv[]) {
 
     SequentialNnetDiscriminativeExampleReader example_reader(examples_rspecifier);
 
-    for (; !example_reader.Done(); example_reader.Next())
+    for (; !example_reader.Done(); example_reader.Next()) {
+      if (log_utt)
+        KALDI_LOG << example_reader.Key();
       discriminative_objf_computer.Compute(example_reader.Value());
+    }
 
     bool ok = discriminative_objf_computer.PrintTotalStats();
 

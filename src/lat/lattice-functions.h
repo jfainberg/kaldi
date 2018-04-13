@@ -222,6 +222,8 @@ bool LatticeBoost(const TransitionModel &trans,
                         the WER metric that we actually care about, since WER is
                         generally computed after filtering out noises, but
                         does penalize insertions.
+    @param [in] drop_frames   Similar to the drop_frames flag for MMI, but different
+                        implementation for the MPE variants - JF.
     @param [out] post   The "MBR posteriors" i.e. derivatives w.r.t to the
                         pseudo log-likelihoods of states at each frame.
 */
@@ -232,7 +234,8 @@ BaseFloat LatticeForwardBackwardMpeVariants(
     const std::vector<int32> &num_ali,
     std::string criterion,
     bool one_silence_class,
-    Posterior *post);
+    Posterior *post,
+    bool drop_frames=false);
 
 /**
    This function can be used to compute posteriors for MMI, with a positive contribution

@@ -798,7 +798,8 @@ BaseFloat LatticeForwardBackwardMpeVariants(
     const std::vector<int32> &num_ali,
     std::string criterion,
     bool one_silence_class,
-    Posterior *post) {
+    Posterior *post,
+    bool drop_frames) {
   using namespace fst;
   typedef Lattice::Arc Arc;
   typedef Arc::Weight Weight;
@@ -825,6 +826,103 @@ BaseFloat LatticeForwardBackwardMpeVariants(
 
   post->clear();
   post->resize(max_time);
+
+  // Find frames from alis that don't occur in lattice
+  std::set<int32> frames_to_drop;
+  if (drop_frames) {
+    KALDI_LOG << "Drop frames: Will set frame_acc = 1 for missing frames!";
+    std::set<int32> ali_set;
+    std::set<int32> lat_set;
+
+    std::map<int32, std::set<int32>> ali_time_map;
+
+    for (StateId s = 0; s < num_states; s++) {
+      int32 cur_time = state_times[s];
+
+      // Loop over arcs for that state
+      for (ArcIterator<Lattice> aiter(lat, s); !aiter.Done(); aiter.Next()) {
+        const Arc &arc = aiter.Value();
+        if (arc.ilabel != 0) {
+          int32 pdf = trans.TransitionIdToPdf(arc.ilabel);
+          lat_set.insert(pdf);
+
+          int32 ref_pdf = trans.TransitionIdToPdf(num_ali[cur_time]);
+          ali_set.insert(ref_pdf);
+          ali_time_map[ref_pdf].insert(cur_time);
+
+        }
+      }
+    }
+
+    // Find frames in ali_set that don't occur in lat_set
+    std::set<int32> diff;
+    std::set_difference(ali_set.begin(), ali_set.end(),
+            lat_set.begin(), lat_set.end(),
+            std::inserter(diff, diff.begin()));
+
+    // Debug
+    /* KALDI_LOG << "ali pdfs: "; */
+    /* for (std::set<int32>::iterator it=ali_set.begin(); it!=ali_set.end(); it++) */
+    /*     std::cerr << *it << " "; */
+    /* std::cerr << std::endl; */
+
+    /* KALDI_LOG << "lat pdfs: "; */
+    /* for (std::set<int32>::iterator it=lat_set.begin(); it!=lat_set.end(); it++) */
+    /*     std::cerr << *it << " "; */
+    /* std::cerr << std::endl; */
+
+
+    KALDI_LOG << "[this line is to be parsed by a script:] missing-pdfs=" << diff.size();
+
+    if (diff.size() > 0) {
+        KALDI_LOG << "Missing reference pdfs: ";
+        for (std::set<int32>::iterator it=diff.begin(); it!=diff.end(); it++)
+            std::cerr << *it << " ";
+        std::cerr << std::endl;
+    }
+    /* KALDI_LOG << "ali_time_map: "; */
+    /* for (std::map<int32, std::set<int32>>::iterator it = ali_time_map.begin(); it != ali_time_map.end(); it++) { */
+    /*     std::cerr << it->first << " =  "; */
+    /*     for (std::set<int32>::iterator it2 = it->second.begin(); it2 != it->second.end(); it2++) */
+    /*         std::cerr << *it2 << " "; */
+    /*     std::cerr << std::endl; */
+    /* } */
+
+    int32 total_num_frames_to_skip = 0;
+
+    /* KALDI_LOG << "Time frames to skip: "; */
+    for (std::set<int32>::iterator it=diff.begin(); it!=diff.end(); it++) {
+        std::set<int32> time_frames = ali_time_map[*it];
+        frames_to_drop.insert(time_frames.begin(), time_frames.end());
+        total_num_frames_to_skip = total_num_frames_to_skip + time_frames.size();
+        /* for (std::set<int32>::iterator it2=time_frames.begin(); it2!=time_frames.end(); it2++) */
+        /*     std::cerr << *it2 << " "; */
+    }
+    KALDI_LOG << "[this line is to be parsed by a script:] time-frames-missing-pdf=" << total_num_frames_to_skip;
+    /* std::cerr << std::endl; */
+
+
+    // Test search
+    /* int32 da = 58; */
+    /* std::set<int32>::iterator it = diff.find(da); */
+    /* if (it != diff.end()) */ 
+    /*     KALDI_LOG << "found " << da; */
+    /* else */
+    /*     KALDI_LOG << "did not find " << da; */
+
+    /* da = 51; */
+    /* it = diff.find(da); */
+    /* if (it != diff.end()) */ 
+    /*     KALDI_LOG << "found " << da; */
+    /* else */
+    /*     KALDI_LOG << "did not find " << da; */
+    
+    // Do I want to skip 
+    //  - states? (same as frames?)
+    //  - time steps / frames? <- try this first
+    //      -> lookup diff value in ali_time_map
+    //  - pdfs?
+  }
 
   alpha[0] = 0.0;
   // First Pass Forward,
@@ -887,13 +985,25 @@ BaseFloat LatticeForwardBackwardMpeVariants(
               ref_pdf = trans.TransitionIdToPdf(num_ali[cur_time]);
           if (!one_silence_class)  // old behavior
             frame_acc = (pdf == ref_pdf && !phone_is_sil) ? 1.0 : 0.0;
-          else
-            frame_acc = (pdf == ref_pdf || both_sil) ? 1.0 : 0.0;
+          else {
+            // if pdf in skip, then 1.0, else continue as normal?
+            //time_frames
+            const bool is_in = frames_to_drop.find(cur_time) != frames_to_drop.end();
+            if (is_in)
+                frame_acc = 1.0;
+            else
+                frame_acc = (pdf == ref_pdf || both_sil) ? 1.0 : 0.0;
+          }
         } else {
           if (!one_silence_class)  // old behavior
             frame_acc = (phone == ref_phone && !phone_is_sil) ? 1.0 : 0.0;
-          else
-            frame_acc = (phone == ref_phone || both_sil) ? 1.0 : 0.0;
+          else {
+            const bool is_in = frames_to_drop.find(cur_time) != frames_to_drop.end();
+            if (is_in)
+                frame_acc = 1.0;
+            else
+                frame_acc = (phone == ref_phone || both_sil) ? 1.0 : 0.0;
+          }
         }
       }
       double arc_scale = Exp(alpha[s] + arc_like - alpha[arc.nextstate]);
@@ -931,13 +1041,23 @@ BaseFloat LatticeForwardBackwardMpeVariants(
               ref_pdf = trans.TransitionIdToPdf(num_ali[cur_time]);
           if (!one_silence_class)  // old behavior
             frame_acc = (pdf == ref_pdf && !phone_is_sil) ? 1.0 : 0.0;
-          else
-            frame_acc = (pdf == ref_pdf || both_sil) ? 1.0 : 0.0;
+          else {
+            const bool is_in = frames_to_drop.find(cur_time) != frames_to_drop.end();
+            if (is_in)
+                frame_acc = 1.0;
+            else
+                frame_acc = (pdf == ref_pdf || both_sil) ? 1.0 : 0.0;
+          }
         } else {
           if (!one_silence_class)  // old behavior
             frame_acc = (phone == ref_phone && !phone_is_sil) ? 1.0 : 0.0;
-          else
-            frame_acc = (phone == ref_phone || both_sil) ? 1.0 : 0.0;
+          else {
+            const bool is_in = frames_to_drop.find(cur_time) != frames_to_drop.end();
+            if (is_in)
+                frame_acc = 1.0;
+            else
+                frame_acc = (phone == ref_phone || both_sil) ? 1.0 : 0.0;
+          }
         }
       }
       double arc_scale = Exp(beta[arc.nextstate] + arc_like - beta[s]);
