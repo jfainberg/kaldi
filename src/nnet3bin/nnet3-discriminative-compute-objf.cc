@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
 
     for (; !example_reader.Done(); example_reader.Next()) {
       if (log_utt)
-        KALDI_LOG << example_reader.Key();
+        std::cout  << example_reader.Key();
       discriminative_objf_computer.Compute(example_reader.Value());
     }
 

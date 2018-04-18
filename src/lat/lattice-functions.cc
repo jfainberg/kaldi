@@ -28,10 +28,13 @@
 #include "util/stl-utils.h"
 #include "base/kaldi-math.h"
 #include "hmm/hmm-utils.h"
+/* #include "base/kaldi-types-extra.h" */
 
 namespace kaldi {
 using std::map;
 using std::vector;
+
+/* typedef SignedLogReal<double> SignedLogDouble; */
 
 void GetPerFrameAcousticCosts(const Lattice &nbest, Vector<BaseFloat> *per_frame_loglikes) {
   using namespace fst;
@@ -394,6 +397,170 @@ BaseFloat LatticeForwardBackward(const Lattice &lat, Posterior *post,
     MergePairVectorSumming(&((*post)[t]));
   return tot_backward_prob;
 }
+
+// Based on LatticeForwardBackwardNceFast in Vimal's implementation
+/* SignedLogDouble LatticeForwardBackwardNce(const Lattice &lat, Posterior *post, */
+/*                                           const std::vector<BaseFloat> *weights, */
+/*                                           BaseFloat weight_threshold) { */
+
+/*     using namespace fst; */
+/*     typedef Lattice::Arc Arc; */
+/*     typedef Arc::Weight Weight; */
+/*     typedef Arc::StateId StateId; */
+
+/*     // Topologically sorted */
+/*     if (lat.Properties(fst::kTopSorted, true) == 0) */
+/*         KALDI_ERR << "Input lattice must be topologically sorted."; */
+/*     KALDI_ASSERT(lat.Start() == 0); */
+
+/*     int32 num_states = lat.NumStates(); */
+/*     vector<int32> state_times; */
+/*     int32 max_time = LatticeStateTimes(lat, &state_times); */
+/*     std::vector<SignedLogDouble> alpha_r(num_states); */
+/*     std::vector<SignedLogDouble> beta_r(num_states); */
+/*     std::vector<double> log_alpha_p(num_states, kLogZeroDouble); */
+/*     std::vector<double> log_beta_p(num_states, kLogZeroDouble); */
+
+/*     double log_Z = kLogZeroDouble; */
+/*     SignedLogDouble r; */
+
+/*     double tot_forward_prob = kLogZeroDouble; */
+
+/*     post->clear(); */
+/*     post->resize(max_time); */
+
+/*     // Necessary with init above? */
+/*     log_alpha_p[0] = 0.0; */
+/*     int32 final_states_count = 0; */
+
+/*     // Forward pass */
+/*     for (StateId s = 0; s < num_states; s++) { */
+/*         double this_log_alpha_p = log_alpha_p[s]; */
+/*         SignedLogDouble this_alpha_r(alpha_r[s]); */
+/*         for (ArcIterator<Lattice> aiter(lat, s); !aiter.Done(); aiter.Next()) { */
+/*             const Arc &arc = aiter.Value(); */
+/*             double log_p_a = -ConvertToCost(arc.weight); */
+
+/*             log_alpha_p[arc.nextstate] = LogAdd(log_alpha_p[arc.nextstate], this_log_alpha_p * log_p_a); */
+
+/*             SignedLogDouble r_a(false, log_p_a); */
+/*             r_a.MultiplyReal(-log_p_a); */
+
+/*             alpha_r[arc.nextstate].AddMultiplyLogReal(r_a, this_log_alpha_p); */
+/*             alpha_r[arc.nextstate].AddMultiplyLogReal(this_alpha_r, log_p_a); */
+/*         } */    
+/*         Weight f = lat.Final(s); */
+/*         if (f != Weight::Zero()) { */
+/*             final_states_count++; */
+/*             double log_f_p = -(f.Value1() + f.Value2()); */
+
+/*             log_Z = LogAdd(log_Z, this_log_alpha_p + log_f_p); */
+
+/*             SignedLogDouble f_r(false, log_f_p); */
+/*             f_r.MultiplyReal(-log_f_p); */
+
+/*             r.AddMultiplyLogReal(f_r, this_log_alpha_p); */
+/*             r.AddMultiplyLogReal(this_alpha_r, log_f_p); */
+
+/*             KALDI_ASSERT(state_times[s] == max_time && */
+/*                     "Lattice is inconsistent (final-prob not at max_time)"); */
+/*         } */
+/*     } */
+
+/*     // Backward pass */
+/*     for (StateId s = num_states-1; s >= 0; s--) { */
+/*         Weight f = lat.Final(s); */
+/*         double this_log_beta_p = kLogZeroDouble; */
+/*         SignedLogDouble this_beta_r; */
+
+/*         if (f != Weight::Zero()) { */
+/*             KALDI_ASSERT(state_times[s] == max_time); */
+/*             double log_f_p = -(f.Value1() + f.Value2()); */
+
+/*             SignedLogDouble f_r(false, log_f_p); */
+/*             f_r.MultiplyReal(-log_f_p); */
+
+/*             this_log_beta_p = -(f.Value1() + f.Value2()); // = log_f_p ? */
+/*             this_beta_r.Add(f_r); */
+/*         } */
+
+/*         for (ArcIterator<Lattice> aiter(lat, s); !aiter.Done(); aiter.Next()) { */
+/*             const Arc &arc = aiter.Value(); */
+/*             double log_p_a = -ConvertToCost(arc.weight); */
+
+/*             this_log_beta_p = LogAdd(this_log_beta_p, log_beta_p[arc.nextstate] + log_p_a); */
+
+/*             SignedLogDouble r_a(false, log_p_a); */
+/*             r_a.MultiplyReal(-log_p_a); */
+
+/*             this_beta_r.AddMultiplyLogReal(r_a, log_beta_p[arc.nextstate]); */
+/*             this_beta_r.AddMultiplyLogReal(beta_r[arc.nextstate], log_p_a); */
+/*         } */
+/*         log_beta_p[s] = this_log_beta_p; */
+/*         beta_r[s] = this_beta_r; */
+
+/*         KALDI_VLOG(10) << "log_beta_p for state " << s << " is " << log_beta_p[s]; */
+/*         KALDI_VLOG(10) << "beta_r for state " << s << " is " << beta_r[s]; */
+/*     } */
+
+/*     // Forward-Backward check */
+/*     KALDI_VLOG(10) << "Total forward log-probability over lattice = " */
+/*                    << log_Z */
+/*                    << ", while total backward log_probability = " */
+/*                    << log_beta_p[0]; */
+/*     KALDI_VLOG(10) << "Total forward (-plog(p)) over lattice = " */
+/*                    << r */
+/*                    << ", while total backward (-plog(p)) = " */
+/*                    << beta_r[0]; */
+/*     if (!ApproxEqual(log_Z, log_beta_p[0], 1e-6)) { */
+/*         KALDI_WARN << "Total forward log-probability over lattice = " << log_Z */
+/*             << ", while total backward log_probability = " << log_beta_p[0]; */
+/*     } */
+/*     if (!r.ApproxEqual(beta_r[0], 1e-6)) { */
+/*         KALDI_WARN << "Total forward (-plog(p)) over lattice = " << r */
+/*             << ", while total backward (-plog(p)) = " << beta_r[0]; */
+/*     } */
+
+/*     // Compute neg entropy */
+/*     // H = r / Z + log(Z) */
+/*     SignedLogDouble H(r); */
+/*     H.MultiplyLogReal(-log_Z); // actually adding */
+/*     H.AddReal(log_Z); */
+
+/*     KALDI_VLOG(4) << "Entropy of Lattice is " << H; */
+
+/*     // Compute derivatives */
+/*     for (StateId s = 0; s < num_states; s++) { */
+/*         int32 t = state_times[s]; */
+/*         if (weights != NULL && (*weights)[t] < weight_threshold) */
+/*             continue; */
+/*         for (ArcIterator<Lattice> aiter(lat, s); !aiter.Done(); aiter.Next()) { */
+/*             const Arc &arc = aiter.Value(); */
+/*             double log_p_a = -ConvertToCost(arc.weight); */
+
+/*             SignedLogDouble r_a(false, log_p_a); */
+/*             r_a.MultiplyReal(-log_p_a); */
+
+/*             if (arc.ilabel != 0) { */
+            
+/*                 double log_delZ = log_alpha_p[s] + log_beta_p[arc.nextstate] + log_p_a; // Why add this again? */
+/*                 SignedLogDouble delr; */
+/*                 delr.AddMultiplyLogReal(beta_r[arc.nextstate], (log_alpha_p[s] + log_p_a)); */
+/*                 delr.AddMultiplyLogReal(alpha_r[s], (log_beta_p[arc.nexstate] + log_p_a)); */
+/*                 delr.AddMultiplyLogReal(r_a, (log_alpha_p[s] + log_beta_p[arc.nextstate])); */
+/*                 delr.Sub(SignedLogDouble(false, log_alpha_p[s] + log_beta_p[arc.nextstate] + log_p_a)); */
+
+/*                 SignedLogDouble delH(false, log_delZ - log_Z); */
+/*                 delH.SubMultiplyLogReal(r, (log_delZ - 2*log_Z)); */
+/*                 delH.AddMultiplyLogReal(delr, (-log_Z)); */
+
+/*                 (*post)[state_times[s]].push_back(std::make_pair(arc.ilabel, -delH.Value())); */
+/*             } */
+/*         } */
+/*     } */
+
+/*     return -H; // Negative Conditional Entropy */
+/* } */
 
 
 void LatticeActivePhones(const Lattice &lat, const TransitionModel &trans,
@@ -830,7 +997,7 @@ BaseFloat LatticeForwardBackwardMpeVariants(
   // Find frames from alis that don't occur in lattice
   std::set<int32> frames_to_drop;
   if (drop_frames) {
-    KALDI_LOG << "Drop frames: Will set frame_acc = 1 for missing frames!";
+    KALDI_VLOG(10) << "Drop frames: Will set frame_acc = 1 for missing frames!";
     std::set<int32> ali_set;
     std::set<int32> lat_set;
 
@@ -872,14 +1039,15 @@ BaseFloat LatticeForwardBackwardMpeVariants(
     /* std::cerr << std::endl; */
 
 
-    KALDI_LOG << "[this line is to be parsed by a script:] missing-pdfs=" << diff.size();
+    //KALDI_VLOG(10) << "[this line is to be parsed by a script:] missing-pdfs=" << diff.size();
+    std::cout << " " << diff.size() << std::endl;
 
-    if (diff.size() > 0) {
-        KALDI_LOG << "Missing reference pdfs: ";
-        for (std::set<int32>::iterator it=diff.begin(); it!=diff.end(); it++)
-            std::cerr << *it << " ";
-        std::cerr << std::endl;
-    }
+    /* if (diff.size() > 0) { */
+    /*     KALDI_VLOG(10) << "Missing reference pdfs: "; */
+    /*     for (std::set<int32>::iterator it=diff.begin(); it!=diff.end(); it++) */
+    /*         std::cerr << *it << " "; */
+    /*     std::cerr << std::endl; */
+    /* } */
     /* KALDI_LOG << "ali_time_map: "; */
     /* for (std::map<int32, std::set<int32>>::iterator it = ali_time_map.begin(); it != ali_time_map.end(); it++) { */
     /*     std::cerr << it->first << " =  "; */
@@ -898,7 +1066,7 @@ BaseFloat LatticeForwardBackwardMpeVariants(
         /* for (std::set<int32>::iterator it2=time_frames.begin(); it2!=time_frames.end(); it2++) */
         /*     std::cerr << *it2 << " "; */
     }
-    KALDI_LOG << "[this line is to be parsed by a script:] time-frames-missing-pdf=" << total_num_frames_to_skip;
+    KALDI_VLOG(10) << "[this line is to be parsed by a script:] time-frames-missing-pdf=" << total_num_frames_to_skip;
     /* std::cerr << std::endl; */
 
 

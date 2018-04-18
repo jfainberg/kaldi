@@ -33,8 +33,11 @@
 #include "hmm/transition-model.h"
 #include "lat/kaldi-lattice.h"
 #include "itf/decodable-itf.h"
+/* #include "base/kaldi-types-extra.h" */
 
 namespace kaldi {
+
+/* typedef SignedLogReal<double> SignedLogDouble; */
 
 /**
    This function extracts the per-frame log likelihoods from a linear
@@ -80,6 +83,12 @@ int32 CompactLatticeStateTimes(const CompactLattice &clat,
 BaseFloat LatticeForwardBackward(const Lattice &lat,
                                  Posterior *arc_post,
                                  double *acoustic_like_sum = NULL);
+
+/// NCE version from Vimal
+/* SignedLogDouble LatticeForwardBackwardNceFast(const Lattice &lat, */
+/*                                               Posterior *arc_post, */
+/*                                               const std::vector<BaseFloat> *weights = NULL, */
+/*                                               BaseFloat weight_threshold = 0.0); */
 
 // This function is something similar to LatticeForwardBackward(), but it is on
 // the CompactLattice lattice format. Also we only need the alpha in the forward
