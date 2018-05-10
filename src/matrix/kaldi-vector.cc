@@ -173,10 +173,11 @@ inline void Vector<Real>::Init(const MatrixIndexT dim) {
   }
   MatrixIndexT size;
   void *data;
+  void *free_data;
 
   size = dim * sizeof(Real);
 
-  if ((data = aligned_alloc(16, size)) != NULL) {
+  if ((data = KALDI_MEMALIGN(16, size, &free_data)) != NULL) {
     this->data_ = static_cast<Real*> (data);
     this->dim_ = dim;
   } else {
@@ -278,7 +279,7 @@ template<typename Real>
 void Vector<Real>::Destroy() {
   /// we need to free the data block if it was defined
   if (this->data_ != NULL)
-    free(this->data_);
+    KALDI_MEMALIGN_FREE(this->data_);
   this->data_ = NULL;
   this->dim_ = 0;
 }
@@ -690,9 +691,11 @@ void VectorBase<Real>::CopyDiagFromPacked(const PackedMatrix<Real> &M) {
 
 template<typename Real>
 Real VectorBase<Real>::Sum() const {
-  double sum = 0.0;
-  for (MatrixIndexT i = 0; i < dim_; i++) { sum += data_[i]; }
-  return sum;
+  // Do a dot-product with a size-1 array with a stride of 0 to
+  // implement sum. This allows us to access SIMD operations in a
+  // cross-platform way via your BLAS library.
+  Real one(1);
+  return cblas_Xdot(dim_, data_, 1, &one, 0);
 }
 
 template<typename Real>
